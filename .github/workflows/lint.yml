@@ -1,0 +1,58 @@
+name: Lint
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - 'README.md'
+      - 'docs/**/*.md'
+      - '.vale.ini'
+      - '.vale/styles/**'
+      - 'dprint.json'
+      - 'lefthook.yml'
+      - '.github/workflows/lint.yml'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Run shellcheck
+        uses: azohra/shell-linter@30a9cf3f6cf25c08fc98f10d7dc4167f7b5c0c00 # v0.8.0
+        with:
+          path: "scripts/*.sh"
+
+  markdown:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Check markdown formatting
+        uses: dprint/check@9cb3a2b17a8e606d37aae341e49df3654933fc23 # v2.3
+        with:
+          args: README.md docs/**/*.md
+
+      - name: Annotate markdown prose
+        uses: vale-cli/vale-action@85f9f7f2c5f449ac0ae5b66662961bae3f77ca6a # 2.1.2
+        with:
+          files: "."
+          vale_flags: "--glob=README.md --glob=docs/**/*.md"
+          reporter: github-pr-check
+          filter_mode: nofilter
+          fail_on_error: true

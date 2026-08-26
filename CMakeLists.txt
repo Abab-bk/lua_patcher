@@ -42,6 +42,7 @@ else()
     # Microsoft::DirectXTK transitively).
     find_package(directxtk CONFIG REQUIRED)
     # rapidcsv must be in vcpkg.json (CommonLibSSE-NG unconditionally adds it as an include dir)
+    find_package(unofficial-lua CONFIG REQUIRED)
 
     # CommonLibSSE-NG
 
@@ -78,6 +79,9 @@ else()
         "Abab-bk"
         SOURCES
         src/Plugin.cpp
+        src/ScriptLoader.cpp
+        src/LuaApi.cpp
+        src/LeveledList.cpp
         "${CMAKE_CURRENT_BINARY_DIR}/src/version.rc"
         USE_ADDRESS_LIBRARY)
 
@@ -96,6 +100,8 @@ else()
 
     target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src"
                                                        "${CMAKE_CURRENT_BINARY_DIR}/src")
+
+    target_link_libraries(${PROJECT_NAME} PRIVATE unofficial::lua::lua)
 
     set_target_properties(
         ${PROJECT_NAME}
@@ -160,6 +166,11 @@ else()
         FILES "$<TARGET_PDB_FILE:${PROJECT_NAME}>"
         DESTINATION "${DEPLOY_DIR}/SKSE/Plugins"
         OPTIONAL)
+
+    # Example Lua scripts (inert without a matching marker plugin)
+    install(
+        FILES examples/LeveledLists.lua
+        DESTINATION "${DEPLOY_DIR}/SKSE/Plugins/LuaPatcher/Scripts")
 
     # `cmake --build --preset deploy`  (or  cmake --workflow --preset deploy)
     add_custom_target(

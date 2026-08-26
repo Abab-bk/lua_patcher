@@ -5,6 +5,9 @@ vcpkg_installed/
 # Packaged releases
 dist/
 
+.cache/
+test/
+
 # xwin cache
 .xwin-cache/
 

@@ -1,5 +1,7 @@
 #include "PCH.h"
 
+#include "ScriptLoader.h"
+
 void SetupLog()
 {
 	auto logsFolder = logger::log_directory();
@@ -32,6 +34,8 @@ void OnDataLoaded()
 {
 	logger::info("OnDataLoaded hook fired");
 
+	LuaPatcher::RunScripts();
+
 	const auto* plugin = SKSE::PluginDeclaration::GetSingleton();
 	const auto  name = plugin ? plugin->GetName() : "Plugin";
 
@@ -58,15 +62,16 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 		return false;
 	}
 
-	if (!messaging->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
-			switch (a_msg->type) {
-			case SKSE::MessagingInterface::kDataLoaded:
-				OnDataLoaded();
-				break;
-			default:
-				break;
-			}
-		})) {
+	if (!messaging->RegisterListener(
+			[](SKSE::MessagingInterface::Message* a_msg) {
+				switch (a_msg->type) {
+				case SKSE::MessagingInterface::kDataLoaded:
+					OnDataLoaded();
+					break;
+				default:
+					break;
+				}
+			})) {
 		logger::error("Failed to register messaging listener");
 		return false;
 	}

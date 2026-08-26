@@ -114,7 +114,7 @@ The `--recurse-submodules` flag (or `-- --recurse-submodules` for `gh repo clone
 
 #### 2. Set your mod name and author
 
-For a repo created from the template, the **Template Setup** workflow (`setup.yml`) renames the `LuaPatcher` and `Author` placeholders, deriving them from the repo name and owner, commits the result, and removes itself. It can run automatically when the repo is created; if it hasn't, trigger it from the **Actions** tab ("Template Setup" > "Run workflow"). Once it has run, `git pull` to get the renamed sources.
+For a repo created from the template, the **Template Setup** workflow (`setup.yml`) renames the `LuaPatcher` and `rorokaii` placeholders, deriving them from the repo name and owner, commits the result, and removes itself. It can run automatically when the repo is created; if it hasn't, trigger it from the **Actions** tab ("Template Setup" > "Run workflow"). Once it has run, `git pull` to get the renamed sources.
 
 Prefer to rename locally, or cloned the template directly? Run the init script instead. It replaces the placeholders, initialises the submodules (CommonLibSSE-NG + vcpkg), bootstraps vcpkg, and copies `.env.example` to `.env`.
 
@@ -123,7 +123,7 @@ Prefer to rename locally, or cloned the template directly? Run the init script i
 ```bash
 ./scripts/init.sh
 # or:
-./scripts/init.sh "AuthorName" "ModName"
+./scripts/init.sh "rorokaiiName" "ModName"
 ```
 
 **Windows (PowerShell)**:
@@ -131,7 +131,7 @@ Prefer to rename locally, or cloned the template directly? Run the init script i
 ```powershell
 .\scripts\init.ps1
 # or:
-.\scripts\init.ps1 "AuthorName" "ModName"
+.\scripts\init.ps1 "rorokaiiName" "ModName"
 ```
 
 #### 3. Configure deploy path

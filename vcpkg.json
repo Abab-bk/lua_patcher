@@ -6,7 +6,8 @@
     "dependencies": [
         "spdlog",
         "directxtk",
-        "rapidcsv"
+        "rapidcsv",
+        "lua"
     ],
     "features": {
         "tests": {

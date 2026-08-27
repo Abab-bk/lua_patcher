@@ -11,6 +11,10 @@ Credits:
 - [SkyPatcher](https://github.com/Zzyxz/SkyPatcher)
 - [CommonLibSSE-NG-template](https://github.com/codepuncher/CommonLibSSE-NG-template)
 
+## Docs
+
+Check examples/
+
 ## Development
 
 ### Prerequisites
@@ -50,8 +54,6 @@ xwin splat --output ~/.xwin
 > lld-link is case-sensitive but CommonLibSSE-NG references libs with mixed-case
 > names. The originals are untouched.
 
-### Getting Started
-
 #### Configure deploy path
 
 Copy `.env.example` to `.env` if you don't have one yet (the init script does
@@ -63,7 +65,7 @@ folder:
 SKYRIM_MODS_FOLDER=$HOME/MO2/mods
 ```
 
-#### 4. Build
+#### Build
 
 ```bash
 ./scripts/build.sh
@@ -94,7 +96,7 @@ $SKYRIM_MODS_FOLDER/LuaPatcher/SKSE/Plugins/
 invoke deploy (optional: --copy-example)
 ```
 
-### Updating CommonLibSSE-NG
+#### Updating CommonLibSSE-NG
 
 ```bash
 git submodule update --remote lib/commonlibsse-ng

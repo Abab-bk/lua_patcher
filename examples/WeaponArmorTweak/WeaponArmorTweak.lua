@@ -1,6 +1,6 @@
 -- LuaPatcher example: Weapon & Armor global fixup (real-world)
 --
--- The writable Equipment API added in LuaPatcher 0.2:
+-- The writable Equipment API added in LuaPatcher:
 --   weapon.damage / speed / reach / stagger / critDamage / weight / value  (rw)
 --   armor.armorRating / weight / value                                      (rw)
 --   weapon:addKeyword(kw) / removeKeyword(kw)  — same for armor

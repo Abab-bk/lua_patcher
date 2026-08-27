@@ -292,6 +292,8 @@ namespace LuaPatcher
 			LuaPatcher::kLeveledListMeta,
 			LuaPatcher::kWeaponMeta,
 			LuaPatcher::kArmorMeta,
+			LuaPatcher::kSpellMeta,
+			LuaPatcher::kMagicEffectMeta,
 		};
 		for (const auto meta : metas) {
 			if (auto* ud = luaL_testudata(a_state, a_index, meta.data())) {
@@ -323,6 +325,12 @@ namespace LuaPatcher
 			break;
 		case RE::FormType::Armor:
 			meta = kArmorMeta;
+			break;
+		case RE::FormType::Spell:
+			meta = kSpellMeta;
+			break;
+		case RE::FormType::MagicEffect:
+			meta = kMagicEffectMeta;
 			break;
 		default:
 			break;

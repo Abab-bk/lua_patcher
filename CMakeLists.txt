@@ -83,6 +83,7 @@ else()
         src/LuaApi.cpp
         src/LeveledList.cpp
         src/Equipment.cpp
+        src/Magic.cpp
         "${CMAKE_CURRENT_BINARY_DIR}/src/version.rc"
         USE_ADDRESS_LIBRARY)
 

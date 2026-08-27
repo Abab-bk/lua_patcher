@@ -27,7 +27,6 @@
 --
 -- CONFIG:
 --   User config lives OUTSIDE the mod at Data/SKSE/Plugins/LuaPatcher/Config/EquipmentInjection.lua
---   (so mod updates never overwrite it). The file must `return { ... }` table.
 --   If missing / load fails, defaults below are used (balanced=true). Example:
 --     -- Config/EquipmentInjection.lua
 --     return {
@@ -59,9 +58,9 @@ local VANILLA = {
 -- User config with safe fallback (never stored inside mod body)
 -- -------------------------------------------------------------------------
 local CONFIG = {
-    balanced = true,               -- false => legacy ll:add(form,1,1) for all
+    balanced = true, -- false => legacy ll:add(form,1,1) for all
     bottomLevel = 1,
-    topLevel = 46,                 -- vanilla Daedric weapon/light 46, heavy 48 -> 46 unified
+    topLevel = 46,   -- vanilla Daedric weapon/light 46, heavy 48 -> 46 unified
     maxLevel = 50,
     targetPrefixes = { "LItem" },
     enableArmor = true,
@@ -80,6 +79,7 @@ do
     else
         print("EquipmentInjection: lua_patcher.tryLoadConfig not available (old plugin?), using defaults")
     end
+
     if loaded then
         for k, v in pairs(loaded) do
             CONFIG[k] = v
@@ -88,6 +88,7 @@ do
     else
         print(string.format("EquipmentInjection: no user config, using defaults (balanced=%s)", tostring(CONFIG.balanced)))
     end
+
     -- normalize targetPrefixes
     if type(CONFIG.targetPrefixes) ~= "table" or #CONFIG.targetPrefixes == 0 then
         CONFIG.targetPrefixes = { "LItem" }
@@ -97,8 +98,9 @@ end
 local BOTTOM_LEVEL = CONFIG.bottomLevel
 local TOP_LEVEL = CONFIG.topLevel
 local MAX_LEVEL = CONFIG.maxLevel
-local TOP_GOLD_FALLBACK = 2500  -- Gear Spreader default for Clothing fallback when no vanilla stats
+local TOP_GOLD_FALLBACK = 2500 -- Gear Spreader default for Clothing fallback when no vanilla stats
 local TARGET_PREFIXES = CONFIG.targetPrefixes
+
 
 local function findListsByEditorIdPrefix(prefix)
     local out = {}
@@ -112,6 +114,7 @@ local function findListsByEditorIdPrefix(prefix)
     return out
 end
 
+
 local targetLists = {}
 for _, prefix in ipairs(TARGET_PREFIXES) do
     for _, ll in ipairs(findListsByEditorIdPrefix(prefix)) do
@@ -119,10 +122,12 @@ for _, prefix in ipairs(TARGET_PREFIXES) do
     end
 end
 
+
 if #targetLists == 0 then
     print("EquipmentInjection: WARNING -- no target lists matched, nothing will be injected")
     print("EquipmentInjection: edit targetPrefixes in Data/SKSE/Plugins/LuaPatcher/Config/EquipmentInjection.lua")
 end
+
 
 -- A form counts as "assigned" if ANY leveled list references it.
 -- The reverse index is cached by the plugin (snapshot of the game's original
@@ -130,6 +135,7 @@ end
 local function isUnassigned(form)
     return #lua_patcher.findLeveledListsContaining(form) == 0
 end
+
 
 local function isInjectionCandidate(form)
     if VANILLA[form.plugin] then
@@ -146,6 +152,7 @@ local function isInjectionCandidate(form)
 
     return isUnassigned(form)
 end
+
 
 -- -------------------------------------------------------------------------
 -- Balanced level calculation (only used when CONFIG.balanced == true)
@@ -171,31 +178,31 @@ local WEAPON_MATERIAL_LEVEL = {
 
 local ARMOR_MATERIAL_LEVEL = {
     -- Light-ish
-    ["Hide"]         = 1,
-    ["Fur"]          = 1,
-    ["Studded"]      = 1,
-    ["Leather"]      = 6,
-    ["Elven"]        = 12,
-    ["Chitin"]       = 11,
-    ["Scaled"]       = 19,
-    ["Glass"]        = 36,
-    ["Stalhrim"]     = 35,
-    ["Dragonscale"]  = 46,
+    ["Hide"]        = 1,
+    ["Fur"]         = 1,
+    ["Studded"]     = 1,
+    ["Leather"]     = 6,
+    ["Elven"]       = 12,
+    ["Chitin"]      = 11,
+    ["Scaled"]      = 19,
+    ["Glass"]       = 36,
+    ["Stalhrim"]    = 35,
+    ["Dragonscale"] = 46,
     -- Heavy-ish
-    ["Iron"]         = 1,
-    ["Banded"]       = 1,
-    ["Steel"]        = 6,
-    ["SteelPlate"]   = 18,
-    ["Dwarven"]      = 12,
-    ["Orcish"]       = 25,
-    ["Ebony"]        = 32,
-    ["Dragonplate"]  = 40,
-    ["Daedric"]      = 48,
+    ["Iron"]        = 1,
+    ["Banded"]      = 1,
+    ["Steel"]       = 6,
+    ["SteelPlate"]  = 18,
+    ["Dwarven"]     = 12,
+    ["Orcish"]      = 25,
+    ["Ebony"]       = 32,
+    ["Dragonplate"] = 40,
+    ["Daedric"]     = 48,
     -- Shared / DLC
-    ["Bonemold"]     = 1,
-    ["Nordic"]       = 18,
-    ["Imperial"]     = 1,
-    ["Stormcloak"]   = 1,
+    ["Bonemold"]    = 1,
+    ["Nordic"]      = 18,
+    ["Imperial"]    = 1,
+    ["Stormcloak"]  = 1,
 }
 
 -- Try to resolve level from keywords by substring match (covers both
@@ -237,6 +244,7 @@ local function collectStats()
     if not CONFIG.balanced then
         return
     end
+
     for _, a in ipairs(lua_patcher.allArmors()) do
         if VANILLA[a.plugin] and a.playable and not a.enchantment then
             local t = a.armorType -- "Light"/"Heavy"/"Clothing"
@@ -256,6 +264,7 @@ local function collectStats()
             end
         end
     end
+
     for _, w in ipairs(lua_patcher.allWeapons()) do
         if VANILLA[w.plugin] and w.playable and not w.enchantment then
             if w.skill == "OneHanded" or w.skill == "TwoHanded" or w.ranged then
@@ -267,14 +276,19 @@ local function collectStats()
             end
         end
     end
+
     for _, k in ipairs({ "Light", "Heavy" }) do
         if armorStats[k].min == math.huge then armorStats[k].min = 5 end
         if armorStats[k].max == -math.huge then armorStats[k].max = 40 end
         if armorStats[k].max <= armorStats[k].min then armorStats[k].max = armorStats[k].min + 10 end
     end
+
     if armorStats.Clothing.minVal == math.huge then armorStats.Clothing.minVal = 0 end
     if armorStats.Clothing.maxVal == -math.huge then armorStats.Clothing.maxVal = TOP_GOLD_FALLBACK end
-    if armorStats.Clothing.maxVal <= armorStats.Clothing.minVal then armorStats.Clothing.maxVal = armorStats.Clothing.minVal + 100 end
+    if armorStats.Clothing.maxVal <= armorStats.Clothing.minVal then
+        armorStats.Clothing.maxVal = armorStats.Clothing.minVal + 100
+    end
+
     if weaponStats.min == math.huge then weaponStats.min = 4 end
     if weaponStats.max == -math.huge then weaponStats.max = 30 end
     if weaponStats.max <= weaponStats.min then weaponStats.max = weaponStats.min + 10 end
@@ -284,7 +298,8 @@ local function collectStats()
         armorStats.Light.min, armorStats.Light.max,
         armorStats.Heavy.min, armorStats.Heavy.max,
         armorStats.Clothing.minVal, armorStats.Clothing.maxVal,
-        weaponStats.min, weaponStats.max))
+        weaponStats.min, weaponStats.max)
+    )
 end
 
 collectStats()
@@ -295,21 +310,28 @@ local function clamp(v, lo, hi)
     return v
 end
 
+
 local function levelFromInterpolation(value, vmin, vmax)
     if vmax <= vmin then return BOTTOM_LEVEL end
     local t = (value - vmin) / (vmax - vmin)
+
     t = clamp(t, 0, 1)
     local lvl = math.floor(BOTTOM_LEVEL + t * (TOP_LEVEL - BOTTOM_LEVEL) + 0.5)
+
     return clamp(lvl, BOTTOM_LEVEL, MAX_LEVEL)
 end
+
 
 local function calcArmorLevel(armor)
     if not CONFIG.balanced then return BOTTOM_LEVEL end
     local kwLvl = levelFromKeywords(armor, false)
+
     if kwLvl then
         return clamp(kwLvl, BOTTOM_LEVEL, MAX_LEVEL)
     end
+
     local t = armor.armorType
+
     if t == "Light" or t == "Heavy" then
         local r = armor.armorRating or 0
         local st = armorStats[t]
@@ -329,18 +351,23 @@ local function calcArmorLevel(armor)
     end
 end
 
+
 local function calcWeaponLevel(weapon)
     if not CONFIG.balanced then return BOTTOM_LEVEL end
     local kwLvl = levelFromKeywords(weapon, true)
+
     if kwLvl then
         return clamp(kwLvl, BOTTOM_LEVEL, MAX_LEVEL)
     end
+
     local dps = (weapon.damage or 0) * (weapon.speed or 1)
     if not weapon.speed or weapon.speed == 0 then
         dps = (weapon.damage or 0) * 1.0
     end
+
     return levelFromInterpolation(dps, weaponStats.min, weaponStats.max)
 end
+
 
 -- Returns the number of lists that actually received the form.
 local function inject(form, level)
@@ -352,6 +379,7 @@ local function inject(form, level)
             added = added + 1
         end
     end
+
     return added
 end
 
@@ -373,6 +401,7 @@ else
     print("EquipmentInjection: armor injection disabled by config")
 end
 
+
 if CONFIG.enableWeapon then
     for _, weapon in ipairs(lua_patcher.allWeapons()) do
         if isInjectionCandidate(weapon) and
@@ -382,20 +411,25 @@ if CONFIG.enableWeapon then
             levelHistWeapon[lvl] = (levelHistWeapon[lvl] or 0) + 1
             local dps = (weapon.damage or 0) * (weapon.speed or 1)
             print(string.format("EquipmentInjection: weapon %s [%s] dmg=%s speed=%.2f dps=%.2f value=%s -> level %d",
-                weapon.identifier, weapon.skill, tostring(weapon.damage), weapon.speed or 0, dps, tostring(weapon.value), lvl))
+                weapon.identifier, weapon.skill, tostring(weapon.damage), weapon.speed or 0, dps, tostring(weapon.value),
+                lvl))
         end
     end
 else
     print("EquipmentInjection: weapon injection disabled by config")
 end
 
+
 local function histToString(h)
     local parts = {}
+
     for lvl = BOTTOM_LEVEL, MAX_LEVEL do
         if h[lvl] then table.insert(parts, string.format("%d:%d", lvl, h[lvl])) end
     end
+
     return #parts > 0 and table.concat(parts, " ") or "none"
 end
+
 
 print(string.format(
     "EquipmentInjection: injected %d armors and %d weapons into %d leveled lists (balanced=%s)",

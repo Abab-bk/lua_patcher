@@ -1,13 +1,5 @@
 -- LuaPatcher example: LeveledLists
 --
--- Drop .lua scripts into Data/SKSE/Plugins/LuaPatcher/Scripts/ (any nesting is
--- fine, files run in alphabetical order). Scripts run once at game load
--- (kDataLoaded), after all plugins are loaded.
---
--- Guard pattern (recommended): the script below is a no-op unless you create a
--- plugin named LuaPatcherExample.esp -- like SkyPatcher's per-plugin .ini
--- convention. Delete or edit the guard to suit your load order.
---
 -- Form identifiers work exactly like SkyPatcher's:
 --   "Plugin.esm|000123"  -> form in a specific plugin (light plugins use 0xFFF-masked IDs)
 --   "SomeEditorID"       -> looked up by EditorID
@@ -33,10 +25,10 @@ end
 print("Patching leveled list " .. chest.identifier)
 
 -- 2) Basic ops (SkyPatcher addToLLs / removeFromLLs equivalents)
-chest:add("LuaPatcherExample.esp|00002000", 1, 1) -- add form at level 1, count 1
-chest:add("LuaPatcherExample.esp|00002001", 10, 2) -- add at level 10, count 2
-chest:addOnce("LuaPatcherExample.esp|00002002")    -- add, but never twice
-chest:remove("LuaPatcherExample.esp|00002003")     -- remove all entries of a form
+chest:add("LuaPatcherExample.esp|00002000", 1, 1)           -- add form at level 1, count 1
+chest:add("LuaPatcherExample.esp|00002001", 10, 2)          -- add at level 10, count 2
+chest:addOnce("LuaPatcherExample.esp|00002002")             -- add, but never twice
+chest:remove("LuaPatcherExample.esp|00002003")              -- remove all entries of a form
 chest:remove("LuaPatcherExample.esp|00002004", ">5", ">=2") -- only level > 5 AND count >= 2
 
 -- 3) Replace and rescale (SkyPatcher formsToReplace / objectMultCount)

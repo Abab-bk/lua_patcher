@@ -1,14 +1,3 @@
--- EquipmentInjection user config - EXAMPLE
---
--- Copy this file to:
---   Data/SKSE/Plugins/LuaPatcher/Config/EquipmentInjection.lua
--- (create the Config folder if it doesn't exist)
---
--- This file is NEVER overwritten by mod updates - the mod ships only
--- examples/EquipmentInjection.lua (the script) and this example.
--- If this file is missing or fails to load, the script falls back to
--- balanced=true, targetPrefixes={"LItem"} defaults.
---
 -- Must `return` a table. Only keys you set override defaults; remove
 -- a line to keep its default.
 

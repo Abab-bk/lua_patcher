@@ -15,6 +15,8 @@ namespace LuaPatcher
 	inline constexpr std::string_view kLeveledListMeta = "LuaPatcher.LeveledList";
 	inline constexpr std::string_view kWeaponMeta = "LuaPatcher.Weapon";
 	inline constexpr std::string_view kArmorMeta = "LuaPatcher.Armor";
+	inline constexpr std::string_view kSpellMeta = "LuaPatcher.Spell";
+	inline constexpr std::string_view kMagicEffectMeta = "LuaPatcher.MagicEffect";
 
 	// Resolves a "Plugin.esm|000123" / "Plugin.esm|123" / EditorID identifier, mirroring
 	// SkyPatcher's GetFormFromIdentifier (light plugins mask to 0xFFF). Results are cached.
@@ -42,4 +44,7 @@ namespace LuaPatcher
 
 	// Registers the Weapon/Armor metatables and the equipment API functions.
 	void RegisterEquipment(lua_State* a_state);
+
+	// Registers Spell/MagicEffect metatables and magic API functions.
+	void RegisterMagic(lua_State* a_state);
 }

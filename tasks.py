@@ -4,14 +4,24 @@ Requires: pip install invoke
 
 Usage:
     invoke build                             configure + build (release-linux)
+    
     invoke deploy                            build + deploy the DLL only
     invoke deploy --copy-example             also copy default example (EquipmentInjection)
     invoke deploy --copy-all-examples        also copy every distributable example
     invoke deploy --example NAME             choose which single example to copy (default: EquipmentInjection)
+    
     invoke format                            format C++ sources with clang-format
+    
     invoke package                           build (if needed) + create distributable zip
     invoke package --build-dir DIR           use existing build dir instead of building
     invoke package --version X.Y.Z           override version
+
+    invoke package-example                   package EquipmentInjection as standalone mod (alias: packageExample)
+    invoke package-example --example NAME    package any distributable example
+    invoke package-example --version X.Y.Z   override version
+    invoke package-example --out DIR         override output dir/file (default: dist/)
+
+    invoke list-examples                     list distributable examples
 """
 
 from __future__ import annotations
@@ -28,9 +38,12 @@ from invoke import Context, Exit, task
 
 ROOT = Path(__file__).resolve().parent
 
-# Deployed mod layout: <SKYRIM_MODS_FOLDER>/LuaPatcher/SKSE/Plugins/
+# Deployed mod layout: <SKYRIM_MODS_FOLDER>/LuaPatcher/SKSE/Plugins/LuaPatcher/Scripts/
+# Flat sibling per examples/ : <Name>.lua + <Name>_Config.lua (same directory, no Config/ split)
+# Legacy Config/ is kept only as fallback in the plugin for old installs.
 MOD_FOLDER_NAME = "LuaPatcher"
 SCRIPTS_RELATIVE = Path("SKSE/Plugins/LuaPatcher/Scripts")
+# Legacy: Data/SKSE/Plugins/LuaPatcher/Config/<Name>.lua  (renamed from <Name>_Config.lua)
 CONFIG_RELATIVE = Path("SKSE/Plugins/LuaPatcher/Config")
 
 # Layout:
@@ -75,6 +88,34 @@ def _mods_folder(c: Context) -> str:
 
 def _is_distributable(p: Path) -> bool:
     return p.is_dir() and p.name != "snippets" and not p.name.startswith(".")  # only snippets is excluded
+
+
+def _list_distributable_examples() -> list[Path]:
+    if not EXAMPLES_ROOT.is_dir():
+        return []
+    return sorted([p for p in EXAMPLES_ROOT.iterdir() if _is_distributable(p)])
+
+
+def _resolve_version(version: str = "") -> str:
+    """Resolve version from explicit string, git tag, or CMakeLists.txt."""
+    ver = version.strip() if version else ""
+    if ver:
+        if not re.match(r"^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$", ver):
+            raise Exit(f"invalid version '{ver}' — expected X.Y.Z or X.Y.Z-pre or X.Y.Z+build")
+        return ver
+
+    cmake_txt = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    m = re.search(r"^\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)", cmake_txt, re.MULTILINE)
+    
+    if m:
+        ver = m.group(1)
+
+    if not ver:
+        raise Exit("could not determine version from CMakeLists.txt")
+
+    if not re.match(r"^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$", ver):
+        raise Exit(f"invalid version '{ver}' — expected X.Y.Z or X.Y.Z-pre or X.Y.Z+build")
+    return ver
 
 
 def _find_example_script(name: str) -> Path | None:
@@ -125,10 +166,8 @@ def _copy_single_example(example: str, mods_folder: str) -> None:
 
     cfg_src = _find_example_config(example)
     if cfg_src:
-        cfg_dir = Path(mods_folder) / MOD_FOLDER_NAME / CONFIG_RELATIVE
-        cfg_dir.mkdir(parents=True, exist_ok=True)
-        # repo: <Name>_Config.lua -> deployed: <Name>.lua (what tryLoadConfig expects)
-        cfg_dst = cfg_dir / f"{example}.lua"
+        # Flat sibling: Scripts/<Name>.lua + Scripts/<Name>_Config.lua (same directory, matches examples/)
+        cfg_dst = scripts_dir / cfg_src.name
         shutil.copy2(cfg_src, cfg_dst)
         print(f"Copied config {cfg_src.name} -> {cfg_dst}")
 
@@ -193,39 +232,7 @@ def package(c: Context, build_dir: str = "", version: str = ""):
     if not shutil.which("7z"):
         raise Exit("7z is not installed")
 
-    ver = version.strip() if version else ""
-    if not ver:
-        # try git describe --tags --exact-match
-        try:
-            proc = subprocess.run(
-                ["git", "describe", "--tags", "--exact-match"],
-                cwd=str(ROOT),
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if proc.returncode == 0:
-                git_tag = proc.stdout.strip()
-                ver = git_tag[1:] if git_tag.startswith("v") else git_tag
-            else:
-                # fallback to CMakeLists.txt
-                cmake_txt = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
-                m = re.search(r"^\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)", cmake_txt, re.MULTILINE)
-                if m:
-                    ver = m.group(1)
-        except FileNotFoundError:
-            # git not installed, try CMakeLists fallback
-            cmake_txt = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
-            m = re.search(r"^\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)", cmake_txt, re.MULTILINE)
-            if m:
-                ver = m.group(1)
-
-        if not ver:
-            raise Exit("could not determine version from CMakeLists.txt")
-
-    # Validate version
-    if not re.match(r"^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$", ver):
-        raise Exit(f"invalid version '{ver}' — expected X.Y.Z or X.Y.Z-pre or X.Y.Z+build")
+    ver = _resolve_version(version)
 
     # Determine build_dir
     build_dir_path: Path
@@ -297,6 +304,139 @@ def package(c: Context, build_dir: str = "", version: str = ""):
     if github_output:
         with open(github_output, "a", encoding="utf-8") as f:
             f.write(f"zip={zip_name}\n")
+
+
+@task(aliases=["packageExample"])
+def package_example(
+    c: Context,
+    example: str = DEFAULT_EXAMPLE,
+    version: str = "",
+    out: str = "",
+):
+    """Create a distributable zip for a single example mod (default: EquipmentInjection).
+
+    Packages examples/<Name>/ as a standalone mod with flat sibling layout:
+        SKSE/Plugins/LuaPatcher/Scripts/<Name>.lua
+        SKSE/Plugins/LuaPatcher/Scripts/<Name>_Config.lua  (same directory, mirrors examples/)
+
+    --example NAME  example folder/name to package (default: EquipmentInjection)
+    --version X.Y.Z override version (default: git tag or CMakeLists.txt)
+    --out DIR       output dir or file (default: dist/<Name>-<ver>.zip)
+
+    Examples:
+        invoke package-example
+        invoke package-example --example EquipmentInjection
+        invoke package-example --example MagicTweak --version 0.0.1 --out dist/
+        invoke packageExample --example WeaponArmorTweak
+    """
+    _ensure_root()
+
+    if not shutil.which("7z"):
+        raise Exit("7z is not installed")
+
+    chosen = example.strip() if example and example.strip() else DEFAULT_EXAMPLE
+
+    if chosen == "snippets" or chosen.startswith("."):
+        raise Exit(f"'{chosen}' is not a distributable example")
+
+    # Verify distributable
+    example_dir = EXAMPLES_ROOT / chosen
+    # Allow legacy flat file case but prefer folder check
+    is_dir_example = example_dir.is_dir()
+    # Also consider _is_distributable helper for directories
+    if is_dir_example and not _is_distributable(example_dir):
+        raise Exit(f"'{chosen}' is not a distributable example")
+    if not is_dir_example:
+        # Check if there's any matching script at all (legacy flat)
+        if not _find_example_script(chosen):
+            # Provide helpful list
+            avail = ", ".join(p.name for p in _list_distributable_examples()) or "(none)"
+            raise Exit(f"Example '{chosen}' not found in examples/. Available: {avail}")
+
+    src = _find_example_script(chosen)
+    if not src or not src.is_file():
+        avail = ", ".join(p.name for p in _list_distributable_examples()) or "(none)"
+        raise Exit(f"Example script for '{chosen}' not found. Looked in examples/{chosen}/. Available: {avail}")
+
+    cfg_src = _find_example_config(chosen)
+
+    ver = _resolve_version(version)
+
+    # Determine output zip path
+    if out and out.strip():
+        out_path = Path(out.strip())
+        if not out_path.is_absolute():
+            out_path = ROOT / out_path
+        # If out is a directory or ends with separator, treat as dir
+        if out_path.suffix.lower() == ".zip":
+            zip_name = out_path
+            zip_name.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            # Directory
+            out_path.mkdir(parents=True, exist_ok=True)
+            zip_name = out_path / f"{chosen}-{ver}.zip"
+    else:
+        zip_name = ROOT / "dist" / f"{chosen}-{ver}.zip"
+        zip_name.parent.mkdir(parents=True, exist_ok=True)
+
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        # Flat sibling structure (mirrors examples/): Scripts/<Name>.lua + Scripts/<Name>_Config.lua
+        scripts_dir = tmp / SCRIPTS_RELATIVE
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, scripts_dir / src.name)
+        print(f"Added script: {SCRIPTS_RELATIVE / src.name}")
+
+        if cfg_src:
+            cfg_dst = scripts_dir / cfg_src.name
+            shutil.copy2(cfg_src, cfg_dst)
+            print(f"Added config: {SCRIPTS_RELATIVE / cfg_dst.name} (from {cfg_src.name})")
+        else:
+            print(f"No config found for '{chosen}' (looked for {chosen}_Config.lua), packaging script only")
+
+        # Create zip: (cd "$tmp" && 7z a -tzip out.zip SKSE > /dev/null)
+        out_zip = tmp / "out.zip"
+        result = subprocess.run(
+            ["7z", "a", "-tzip", str(out_zip), "SKSE"],
+            cwd=str(tmp),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise Exit(f"7z failed: {result.stderr}")
+
+        # Move to final location (handle overwrite)
+        if zip_name.exists():
+            zip_name.unlink()
+        shutil.move(str(out_zip), str(zip_name))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print(f"\nPackageExample: {zip_name}  (example={chosen} version={ver})")
+
+    github_output = os.environ.get("GITHUB_OUTPUT", "")
+    if github_output:
+        with open(github_output, "a", encoding="utf-8") as f:
+            f.write(f"zip_example={zip_name}\n")
+            f.write(f"example={chosen}\n")
+
+
+@task(aliases=["listExamples"])
+def list_examples(c: Context):
+    """List distributable examples available for packaging/deploy."""
+    _ensure_root()
+    examples = _list_distributable_examples()
+    if not examples:
+        print("No distributable examples found in examples/")
+        return
+    print("Distributable examples:")
+    for p in examples:
+        script = _find_example_script(p.name)
+        cfg = _find_example_config(p.name)
+        script_info = script.name if script else "(no .lua found)"
+        cfg_info = cfg.name if cfg else "(no config)"
+        print(f"  - {p.name}: script={script_info} config={cfg_info}")
 
 
 @task

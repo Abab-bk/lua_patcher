@@ -22,6 +22,22 @@ namespace
 		       (extension[3] == 'a' || extension[3] == 'A');
 	}
 
+	bool IsConfigFile(const std::filesystem::path& a_path)
+	{
+		// Config files are sibling "<Name>_Config.lua" next to the script;
+		// they must not be executed as top-level scripts.
+		// Mirrors examples/ layout: ModName.lua + ModName_Config.lua
+		const auto filename = a_path.filename().string();
+		if (filename.size() < 11) {
+			return false;
+		}
+		std::string suffix = filename.substr(filename.size() - 11);
+		for (char& c : suffix) {
+			c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+		}
+		return suffix == "_config.lua";
+	}
+
 	// Message handler for lua_pcall: turns errors into a full stack traceback.
 	int TracebackHandler(lua_State* a_state)
 	{
@@ -95,7 +111,7 @@ namespace LuaPatcher
 
 		std::vector<fs::path> scripts;
 		for (const auto& entry : fs::recursive_directory_iterator(base)) {
-			if (entry.is_regular_file() && HasLuaExtension(entry.path())) {
+			if (entry.is_regular_file() && HasLuaExtension(entry.path()) && !IsConfigFile(entry.path())) {
 				scripts.push_back(entry.path());
 			}
 		}

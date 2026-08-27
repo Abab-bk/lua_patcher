@@ -191,7 +191,9 @@ namespace
 		return 1;
 	}
 
-	// Whitelisted config loader: only Data/SKSE/Plugins/LuaPatcher/Config/<name>.lua
+	// Whitelisted config loader: primary Data/SKSE/Plugins/LuaPatcher/Scripts/<name>_Config.lua
+	// (flat sibling of the script, mirrors examples/<Name>/<Name>.lua + <Name>_Config.lua).
+	// Legacy fallbacks: Data/SKSE/Plugins/LuaPatcher/Config/<name>.lua and Config/<name>_Config.lua.
 	// Returns the chunk's return value (usually a table) or nil on miss/error.
 	// Security: name must be a plain file name, no path separators or "..".
 	int TryLoadConfig(lua_State* a_state)
@@ -214,17 +216,22 @@ namespace
 		}
 
 		namespace fs = std::filesystem;
-		const fs::path configDir = "Data/SKSE/Plugins/LuaPatcher/Config";
-		fs::path       file = configDir / (baseName + ".lua");
-		// Support <ModName>_Config.lua naming convention inside Config/ as well
-		// (e.g. user kept EquipmentInjection_Config.lua without renaming).
+		const fs::path scriptDir = "Data/SKSE/Plugins/LuaPatcher/Scripts";
+		const fs::path legacyConfigDir = "Data/SKSE/Plugins/LuaPatcher/Config";
+		// Flat layout: Scripts/<Name>_Config.lua sibling to Scripts/<Name>.lua (matches examples/)
+		fs::path file = scriptDir / (baseName + "_Config.lua");
 		if (!fs::exists(file)) {
-			fs::path alt = configDir / (baseName + "_Config.lua");
-			if (fs::exists(alt)) {
-				file = alt;
+			// Legacy fallbacks: Config/<Name>.lua and Config/<Name>_Config.lua
+			fs::path legacy1 = legacyConfigDir / (baseName + ".lua");
+			fs::path legacy2 = legacyConfigDir / (baseName + "_Config.lua");
+			if (fs::exists(legacy1)) {
+				file = legacy1;
+			} else if (fs::exists(legacy2)) {
+				file = legacy2;
 			} else {
-				logger::info("LuaPatcher: config '{}' not found at '{}' nor '{}', using defaults", baseName,
-					file.generic_string(), alt.generic_string());
+				logger::info(
+					"LuaPatcher: config '{}' not found at '{}' nor legacy '{}'/'{}', using defaults", baseName,
+					file.generic_string(), legacy1.generic_string(), legacy2.generic_string());
 				lua_pushnil(a_state);
 				return 1;
 			}

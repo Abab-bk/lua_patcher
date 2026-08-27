@@ -26,9 +26,12 @@
 --   `count` stays 1 for weapons/armors (arrows use 12 in vanilla, not injected here).
 --
 -- CONFIG:
---   User config lives OUTSIDE the mod at Data/SKSE/Plugins/LuaPatcher/Config/EquipmentInjection.lua
+--   User config is a flat sibling next to the script:
+--     Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection.lua
+--     Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_Config.lua
+--   The _Config.lua file lives BESIDE the script (mirrors examples/ layout).
 --   If missing / load fails, defaults below are used (balanced=true). Example:
---     -- Config/EquipmentInjection.lua
+--     -- EquipmentInjection_Config.lua
 --     return {
 --       balanced = true,
 --       bottomLevel = 1,
@@ -39,7 +42,7 @@
 --       enableWeapon = true,
 --     }
 --   See examples/EquipmentInjection/EquipmentInjection_Config.lua
---   (copy to Data/SKSE/Plugins/LuaPatcher/Config/EquipmentInjection.lua)
+--   (copy to Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_Config.lua)
 --
 -- NOTE: if nothing gets injected, check the "prefix '...' matched N lists"
 -- lines in your log -- the target lists below must match lists that actually
@@ -84,7 +87,7 @@ do
         for k, v in pairs(loaded) do
             CONFIG[k] = v
         end
-        print("EquipmentInjection: loaded user config from Data/SKSE/Plugins/LuaPatcher/Config/EquipmentInjection.lua")
+        print("EquipmentInjection: loaded user config from Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_Config.lua")
     else
         print(string.format("EquipmentInjection: no user config, using defaults (balanced=%s)", tostring(CONFIG.balanced)))
     end
@@ -125,7 +128,7 @@ end
 
 if #targetLists == 0 then
     print("EquipmentInjection: WARNING -- no target lists matched, nothing will be injected")
-    print("EquipmentInjection: edit targetPrefixes in Data/SKSE/Plugins/LuaPatcher/Config/EquipmentInjection.lua")
+    print("EquipmentInjection: edit targetPrefixes in Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_Config.lua")
 end
 
 

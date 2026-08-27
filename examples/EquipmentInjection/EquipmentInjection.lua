@@ -40,6 +40,8 @@
 --       targetPrefixes = { "LItem" },
 --       enableArmor = true,
 --       enableWeapon = true,
+--       maxListsPerItem = 15,  -- 0 = all 1290, 15 = random subset (less is sparser)
+--       injectionChance = 1.0,
 --     }
 --   See examples/EquipmentInjection/EquipmentInjection_Config.lua
 --   (copy to Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_Config.lua)
@@ -78,6 +80,8 @@ local CONFIG = {
     targetPrefixes = { "LItem" },
     enableArmor = true,
     enableWeapon = true,
+    maxListsPerItem = 15,  -- 0 = all matching (too strong), 15 = random subset per item
+    injectionChance = 1.0, -- per-list roll 0..1 after subset
 }
 
 do
@@ -107,6 +111,9 @@ do
     if type(CONFIG.targetPrefixes) ~= "table" or #CONFIG.targetPrefixes == 0 then
         CONFIG.targetPrefixes = { "LItem" }
     end
+    if type(CONFIG.maxListsPerItem) ~= "number" or CONFIG.maxListsPerItem < 0 then CONFIG.maxListsPerItem = 15 end
+    if type(CONFIG.injectionChance) ~= "number" or CONFIG.injectionChance < 0 then CONFIG.injectionChance = 1.0 end
+    if CONFIG.injectionChance > 1 then CONFIG.injectionChance = 1 end
 end
 
 local BOTTOM_LEVEL = CONFIG.bottomLevel
@@ -274,21 +281,20 @@ local function collectStats()
         return
     end
 
+    local lightVals, heavyVals, clothingVals, weaponVals = {}, {}, {}, {}
+
     for _, a in ipairs(lua_patcher.allArmors()) do
         if VANILLA[a.plugin] and a.playable and not a.enchantment then
-            local t = a.armorType -- "Light"/"Heavy"/"Clothing"
-            if t == "Light" or t == "Heavy" then
-                local r = a.armorRating or 0
-                if r and r > 0 then
-                    local st = armorStats[t]
-                    if r < st.min then st.min = r end
-                    if r > st.max then st.max = r end
-                end
-            elseif t == "Clothing" then
-                local v = a.value or 0
-                if v then
-                    if v < armorStats.Clothing.minVal then armorStats.Clothing.minVal = v end
-                    if v > armorStats.Clothing.maxVal then armorStats.Clothing.maxVal = v end
+            local ok, t = pcall(function() return a.armorType end)
+            if ok then
+                if t == "Light" or t == "Heavy" then
+                    local r = a.armorRating or 0
+                    if r and r > 0 then
+                        if t == "Light" then table.insert(lightVals, r) else table.insert(heavyVals, r) end
+                    end
+                elseif t == "Clothing" then
+                    local v = a.value or 0
+                    if v then table.insert(clothingVals, v) end
                 end
             end
         end
@@ -296,38 +302,82 @@ local function collectStats()
 
     for _, w in ipairs(lua_patcher.allWeapons()) do
         if VANILLA[w.plugin] and w.playable and not w.enchantment then
-            if w.skill == "OneHanded" or w.skill == "TwoHanded" or w.ranged then
-                local dps = (w.damage or 0) * (w.speed or 1)
-                if dps and dps > 0 then
-                    if dps < weaponStats.min then weaponStats.min = dps end
-                    if dps > weaponStats.max then weaponStats.max = dps end
+            local okSkill, skill = pcall(function() return w.skill end)
+            local okRanged, ranged = pcall(function() return w.ranged end)
+            local isWeapon = false
+            if okSkill and (skill == "OneHanded" or skill == "TwoHanded") then isWeapon = true end
+            if okRanged and ranged then isWeapon = true end
+            if isWeapon then
+                local okD, dmg = pcall(function() return w.damage end)
+                local okS, spd = pcall(function() return w.speed end)
+                local dps = (okD and dmg or 0) * ((okS and spd or 1) or 1)
+                if dps and dps > 0 and dps < 1000 then
+                    table.insert(weaponVals, dps)
+                elseif dps and dps >= 1000 then
+                    print(string.format("EquipmentInjection: outlier weapon %s DPS=%.2f ignored for stats", w.identifier or "unknown", dps))
                 end
             end
         end
     end
 
-    for _, k in ipairs({ "Light", "Heavy" }) do
-        if armorStats[k].min == math.huge then armorStats[k].min = 5 end
-        if armorStats[k].max == -math.huge then armorStats[k].max = 40 end
-        if armorStats[k].max <= armorStats[k].min then armorStats[k].max = armorStats[k].min + 10 end
+    local function percentile(sorted, p)
+        if #sorted == 0 then return nil end
+        table.sort(sorted)
+        local idx = math.floor(p * #sorted) + 1
+        if idx < 1 then idx = 1 end
+        if idx > #sorted then idx = #sorted end
+        return sorted[idx]
     end
 
-    if armorStats.Clothing.minVal == math.huge then armorStats.Clothing.minVal = 0 end
-    if armorStats.Clothing.maxVal == -math.huge then armorStats.Clothing.maxVal = TOP_GOLD_FALLBACK end
-    if armorStats.Clothing.maxVal <= armorStats.Clothing.minVal then
-        armorStats.Clothing.maxVal = armorStats.Clothing.minVal + 100
+    local function robustMinMax(vals, fallbackMin, fallbackMax)
+        if #vals == 0 then return fallbackMin, fallbackMax end
+        if #vals < 10 then
+            local mn, mx = math.huge, -math.huge
+            for _, v in ipairs(vals) do if v < mn then mn = v end; if v > mx then mx = v end end
+            return mn, mx
+        end
+        table.sort(vals)
+        local mn = percentile(vals, 0.05)
+        local mx = percentile(vals, 0.95)
+        if mx <= mn then mx = mn + 10 end
+        return mn, mx
     end
 
-    if weaponStats.min == math.huge then weaponStats.min = 4 end
-    if weaponStats.max == -math.huge then weaponStats.max = 30 end
+    local mn, mx = robustMinMax(lightVals, 5, 40)
+    armorStats.Light.min, armorStats.Light.max = mn, mx
+    mn, mx = robustMinMax(heavyVals, 5, 40)
+    armorStats.Heavy.min, armorStats.Heavy.max = mn, mx
+    if #clothingVals == 0 then
+        armorStats.Clothing.minVal, armorStats.Clothing.maxVal = 0, TOP_GOLD_FALLBACK
+    else
+        local cMin, cMax = robustMinMax(clothingVals, 0, TOP_GOLD_FALLBACK)
+        armorStats.Clothing.minVal, armorStats.Clothing.maxVal = cMin, cMax
+        if armorStats.Clothing.maxVal <= armorStats.Clothing.minVal then
+            armorStats.Clothing.maxVal = armorStats.Clothing.minVal + 100
+        end
+    end
+
+    if #weaponVals == 0 then
+        weaponStats.min, weaponStats.max = 4, 30
+    else
+        local wMin, wMax = robustMinMax(weaponVals, 4, 30)
+        weaponStats.min, weaponStats.max = wMin, wMax
+    end
     if weaponStats.max <= weaponStats.min then weaponStats.max = weaponStats.min + 10 end
+    if armorStats.Light.max <= armorStats.Light.min then armorStats.Light.max = armorStats.Light.min + 10 end
+    if armorStats.Heavy.max <= armorStats.Heavy.min then armorStats.Heavy.max = armorStats.Heavy.min + 10 end
+
+    if weaponStats.max > 100 then
+        print(string.format("EquipmentInjection: weaponStats max %.2f clamped to 50 (outlier)", weaponStats.max))
+        weaponStats.max = 50
+    end
 
     print(string.format(
-        "EquipmentInjection: vanilla stats Light[%.1f-%.1f] Heavy[%.1f-%.1f] ClothingVal[%d-%d] WeaponDPS[%.2f-%.2f]",
-        armorStats.Light.min, armorStats.Light.max,
-        armorStats.Heavy.min, armorStats.Heavy.max,
-        armorStats.Clothing.minVal, armorStats.Clothing.maxVal,
-        weaponStats.min, weaponStats.max)
+        "EquipmentInjection: vanilla stats Light[%.1f-%.1f] (%d samples) Heavy[%.1f-%.1f] (%d) ClothingVal[%d-%d] (%d) WeaponDPS[%.2f-%.2f] (%d)",
+        armorStats.Light.min, armorStats.Light.max, #lightVals,
+        armorStats.Heavy.min, armorStats.Heavy.max, #heavyVals,
+        armorStats.Clothing.minVal, armorStats.Clothing.maxVal, #clothingVals,
+        weaponStats.min, weaponStats.max, #weaponVals)
     )
 end
 
@@ -398,18 +448,41 @@ local function calcWeaponLevel(weapon)
 end
 
 
--- Returns the number of lists that actually received the form.
+-- Random subset helper (maxListsPerItem / injectionChance) on top of all targetLists
+local function selectRandomSubset(all)
+    if #all == 0 then return all end
+    local tmp = {}
+    if CONFIG.injectionChance < 1.0 then
+        for _, ll in ipairs(all) do
+            if math.random() <= CONFIG.injectionChance then table.insert(tmp, ll) end
+        end
+        if #tmp == 0 then return tmp end
+        all = tmp
+    end
+    if CONFIG.maxListsPerItem > 0 and #all > CONFIG.maxListsPerItem then
+        for i = #all, 2, -1 do
+            local j = math.random(i)
+            all[i], all[j] = all[j], all[i]
+        end
+        local truncated = {}
+        for i = 1, CONFIG.maxListsPerItem do truncated[i] = all[i] end
+        all = truncated
+    end
+    return all
+end
+
+-- Returns the number of lists that actually received the form (after random subset).
 local function inject(form, level)
     local added = 0
     level = clamp(level or BOTTOM_LEVEL, BOTTOM_LEVEL, MAX_LEVEL)
-    for _, ll in ipairs(targetLists) do
+    local candidates = selectRandomSubset(targetLists)
+    for _, ll in ipairs(candidates) do
         if not ll:has(form) then
             ll:add(form, level, 1)
             added = added + 1
         end
     end
-
-    return added
+    return added, #candidates
 end
 
 local injectedArmor, injectedWeapons = 0, 0
@@ -417,13 +490,15 @@ local levelHistArmor, levelHistWeapon = {}, {}
 
 if CONFIG.enableArmor then
     for _, armor in ipairs(lua_patcher.allArmors()) do
-        if isInjectionCandidate(armor) and
-            (armor.armorType == "Light" or armor.armorType == "Heavy" or armor.armorType == "Clothing") then
+        local okType, t = pcall(function() return armor.armorType end)
+        local isArmorType = okType and (t == "Light" or t == "Heavy" or t == "Clothing")
+        if isInjectionCandidate(armor) and isArmorType then
             local lvl = calcArmorLevel(armor)
-            injectedArmor = injectedArmor + inject(armor, lvl)
-            levelHistArmor[lvl] = (levelHistArmor[lvl] or 0) + 1
-            print(string.format("EquipmentInjection: armor %s [%s] rating=%.1f value=%s -> level %d",
-                armor.identifier, armor.armorType, armor.armorRating or 0, tostring(armor.value), lvl))
+            local added, cand = inject(armor, lvl)
+            if added > 0 then levelHistArmor[lvl] = (levelHistArmor[lvl] or 0) + 1 end
+            injectedArmor = injectedArmor + added
+            print(string.format("EquipmentInjection: armor %s [%s] rating=%.1f value=%s -> level %d candidates=%d added=%d",
+                armor.identifier, t or "unknown", armor.armorRating or 0, tostring(armor.value), lvl, cand or #targetLists, added))
         end
     end
 else
@@ -433,15 +508,21 @@ end
 
 if CONFIG.enableWeapon then
     for _, weapon in ipairs(lua_patcher.allWeapons()) do
-        if isInjectionCandidate(weapon) and
-            (weapon.skill == "OneHanded" or weapon.skill == "TwoHanded" or weapon.ranged) then
+        local okSkill, skill = pcall(function() return weapon.skill end)
+        local okRanged, ranged = pcall(function() return weapon.ranged end)
+        local isWeaponType = false
+        if okSkill and (skill == "OneHanded" or skill == "TwoHanded") then isWeaponType = true end
+        if okRanged and ranged then isWeaponType = true end
+        if isInjectionCandidate(weapon) and isWeaponType then
             local lvl = calcWeaponLevel(weapon)
-            injectedWeapons = injectedWeapons + inject(weapon, lvl)
-            levelHistWeapon[lvl] = (levelHistWeapon[lvl] or 0) + 1
+            local added, cand = inject(weapon, lvl)
+            if added > 0 then levelHistWeapon[lvl] = (levelHistWeapon[lvl] or 0) + 1 end
+            injectedWeapons = injectedWeapons + added
             local dps = (weapon.damage or 0) * (weapon.speed or 1)
-            print(string.format("EquipmentInjection: weapon %s [%s] dmg=%s speed=%.2f dps=%.2f value=%s -> level %d",
-                weapon.identifier, weapon.skill, tostring(weapon.damage), weapon.speed or 0, dps, tostring(weapon.value),
-                lvl))
+            if not weapon.speed or weapon.speed == 0 then dps = (weapon.damage or 0) * 1.0 end
+            local sk = okSkill and skill or "unknown"
+            print(string.format("EquipmentInjection: weapon %s [%s] dmg=%s speed=%.2f dps=%.2f value=%s -> level %d candidates=%d added=%d",
+                weapon.identifier, sk, tostring(weapon.damage), weapon.speed or 0, dps, tostring(weapon.value), lvl, cand or #targetLists, added))
         end
     end
 else
@@ -461,7 +542,7 @@ end
 
 
 print(string.format(
-    "EquipmentInjection: injected %d armors and %d weapons into %d leveled lists (balanced=%s)",
-    injectedArmor, injectedWeapons, #targetLists, tostring(CONFIG.balanced)))
-print("EquipmentInjection: armor level hist -> " .. histToString(levelHistArmor))
-print("EquipmentInjection: weapon level hist -> " .. histToString(levelHistWeapon))
+    "EquipmentInjection: injected %d armor-entries and %d weapon-entries into %d leveled lists (balanced=%s maxPerItem=%d chance=%.2f)",
+    injectedArmor, injectedWeapons, #targetLists, tostring(CONFIG.balanced), CONFIG.maxListsPerItem, CONFIG.injectionChance))
+print("EquipmentInjection: armor level hist (distinct items) -> " .. histToString(levelHistArmor))
+print("EquipmentInjection: weapon level hist (distinct items) -> " .. histToString(levelHistWeapon))

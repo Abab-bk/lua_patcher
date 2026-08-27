@@ -20,4 +20,8 @@ return {
     -- Master toggles - set false to skip that category entirely
     enableArmor = true,
     enableWeapon = true,
+
+    -- Random subset (0 = all 1290; 15 is denser than 5, vanilla was 1290)
+    maxListsPerItem = 15,  -- cap random lists per item
+    injectionChance = 1.0, -- per-list roll 0..1
 }

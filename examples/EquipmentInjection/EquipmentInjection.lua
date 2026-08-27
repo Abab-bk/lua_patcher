@@ -57,6 +57,16 @@ local VANILLA = {
     ["Dragonborn.esm"] = true,
 }
 
+local BLOCK_LIST = {
+    ["CBBE.esp"] = true,
+    ["3BBB.esp"] = true,
+    ["XPMSE.esp"] = true,
+}
+
+local BLOCK_PREFIX_LIST = {
+    "aaSMP", "SMP3"
+}
+
 -- -------------------------------------------------------------------------
 -- User config with safe fallback (never stored inside mod body)
 -- -------------------------------------------------------------------------
@@ -87,7 +97,8 @@ do
         for k, v in pairs(loaded) do
             CONFIG[k] = v
         end
-        print("EquipmentInjection: loaded user config from Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_Config.lua")
+        print(
+            "EquipmentInjection: loaded user config from Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_Config.lua")
     else
         print(string.format("EquipmentInjection: no user config, using defaults (balanced=%s)", tostring(CONFIG.balanced)))
     end
@@ -128,7 +139,8 @@ end
 
 if #targetLists == 0 then
     print("EquipmentInjection: WARNING -- no target lists matched, nothing will be injected")
-    print("EquipmentInjection: edit targetPrefixes in Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_Config.lua")
+    print(
+        "EquipmentInjection: edit targetPrefixes in Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_Config.lua")
 end
 
 
@@ -143,6 +155,20 @@ end
 local function isInjectionCandidate(form)
     if VANILLA[form.plugin] then
         return false
+    end
+
+    if BLOCK_LIST[form.plugin] then
+        return false
+    end
+
+    -- Block by EditorID prefix (e.g. SMP physics internals like aaSMP / SMP3)
+    local ed = form.editorId
+    if ed then
+        for _, prefix in ipairs(BLOCK_PREFIX_LIST) do
+            if string.sub(ed, 1, #prefix) == prefix then
+                return false
+            end
+        end
     end
 
     if not form.playable then

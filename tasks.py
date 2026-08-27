@@ -39,18 +39,18 @@ from invoke import Context, Exit, task
 ROOT = Path(__file__).resolve().parent
 
 # Deployed mod layout: <SKYRIM_MODS_FOLDER>/LuaPatcher/SKSE/Plugins/LuaPatcher/Scripts/
-# Flat sibling per examples/ : <Name>.lua + <Name>_Config.lua (same directory, no Config/ split)
+# Flat sibling per examples/ : <Name>.lua + <Name>_config.lua (same directory, no Config/ split)
 # Legacy Config/ is kept only as fallback in the plugin for old installs.
 MOD_FOLDER_NAME = "LuaPatcher"
 SCRIPTS_RELATIVE = Path("SKSE/Plugins/LuaPatcher/Scripts")
-# Legacy: Data/SKSE/Plugins/LuaPatcher/Config/<Name>.lua  (renamed from <Name>_Config.lua)
+# Legacy: Data/SKSE/Plugins/LuaPatcher/Config/<Name>.lua  (renamed from <Name>_config.lua)
 CONFIG_RELATIVE = Path("SKSE/Plugins/LuaPatcher/Config")
 
 # Layout:
 #   examples/
 #     EquipmentInjection/
 #       EquipmentInjection.lua
-#       EquipmentInjection_Config.lua
+#       EquipmentInjection_config.lua
 #     snippets/   -> NOT distributable, reference only
 EXAMPLES_ROOT = ROOT / "examples"
 DEFAULT_EXAMPLE = "EquipmentInjection"
@@ -127,7 +127,7 @@ def _find_example_script(name: str) -> Path | None:
         luas = sorted(dir_.glob("*.lua"))
         # prefer non-config lua
         for f in luas:
-            if not f.name.endswith("_Config.lua"):
+            if not f.name.endswith("_config.lua"):
                 return f
         if luas:
             return luas[0]
@@ -142,7 +142,7 @@ def _find_example_script(name: str) -> Path | None:
 
 def _find_example_config(name: str) -> Path | None:
     for cand in [
-        EXAMPLES_ROOT / name / f"{name}_Config.lua",
+        EXAMPLES_ROOT / name / f"{name}_config.lua",
         EXAMPLES_ROOT / name / "Config.lua",
     ]:
         if cand.is_file():
@@ -166,7 +166,7 @@ def _copy_single_example(example: str, mods_folder: str) -> None:
 
     cfg_src = _find_example_config(example)
     if cfg_src:
-        # Flat sibling: Scripts/<Name>.lua + Scripts/<Name>_Config.lua (same directory, matches examples/)
+        # Flat sibling: Scripts/<Name>.lua + Scripts/<Name>_config.lua (same directory, matches examples/)
         cfg_dst = scripts_dir / cfg_src.name
         shutil.copy2(cfg_src, cfg_dst)
         print(f"Copied config {cfg_src.name} -> {cfg_dst}")
@@ -317,7 +317,7 @@ def package_example(
 
     Packages examples/<Name>/ as a standalone mod with flat sibling layout:
         SKSE/Plugins/LuaPatcher/Scripts/<Name>.lua
-        SKSE/Plugins/LuaPatcher/Scripts/<Name>_Config.lua  (same directory, mirrors examples/)
+        SKSE/Plugins/LuaPatcher/Scripts/<Name>_config.lua  (same directory, mirrors examples/)
 
     --example NAME  example folder/name to package (default: EquipmentInjection)
     --version X.Y.Z override version (default: git tag or CMakeLists.txt)
@@ -381,7 +381,7 @@ def package_example(
 
     tmp = Path(tempfile.mkdtemp())
     try:
-        # Flat sibling structure (mirrors examples/): Scripts/<Name>.lua + Scripts/<Name>_Config.lua
+        # Flat sibling structure (mirrors examples/): Scripts/<Name>.lua + Scripts/<Name>_config.lua
         scripts_dir = tmp / SCRIPTS_RELATIVE
         scripts_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, scripts_dir / src.name)
@@ -392,7 +392,7 @@ def package_example(
             shutil.copy2(cfg_src, cfg_dst)
             print(f"Added config: {SCRIPTS_RELATIVE / cfg_dst.name} (from {cfg_src.name})")
         else:
-            print(f"No config found for '{chosen}' (looked for {chosen}_Config.lua), packaging script only")
+            print(f"No config found for '{chosen}' (looked for {chosen}_config.lua), packaging script only")
 
         # Create zip: (cd "$tmp" && 7z a -tzip out.zip SKSE > /dev/null)
         out_zip = tmp / "out.zip"

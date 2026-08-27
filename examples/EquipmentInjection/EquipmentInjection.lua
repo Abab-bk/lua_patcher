@@ -28,10 +28,10 @@
 -- CONFIG:
 --   User config is a flat sibling next to the script:
 --     Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection.lua
---     Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_Config.lua
---   The _Config.lua file lives BESIDE the script (mirrors examples/ layout).
+--     Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_config.lua
+--   The _config.lua file lives BESIDE the script (mirrors examples/ layout).
 --   If missing / load fails, defaults below are used (balanced=true). Example:
---     -- EquipmentInjection_Config.lua
+--     -- EquipmentInjection_config.lua
 --     return {
 --       balanced = true,
 --       bottomLevel = 1,
@@ -43,8 +43,8 @@
 --       maxListsPerItem = 15,  -- 0 = all 1290, 15 = random subset (less is sparser)
 --       injectionChance = 1.0,
 --     }
---   See examples/EquipmentInjection/EquipmentInjection_Config.lua
---   (copy to Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_Config.lua)
+--   See examples/EquipmentInjection/EquipmentInjection_config.lua
+--   (copy to Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_config.lua)
 --
 -- NOTE: if nothing gets injected, check the "prefix '...' matched N lists"
 -- lines in your log -- the target lists below must match lists that actually
@@ -102,7 +102,7 @@ do
             CONFIG[k] = v
         end
         print(
-            "EquipmentInjection: loaded user config from Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_Config.lua")
+            "EquipmentInjection: loaded user config from Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_config.lua")
     else
         print(string.format("EquipmentInjection: no user config, using defaults (balanced=%s)", tostring(CONFIG.balanced)))
     end
@@ -147,7 +147,7 @@ end
 if #targetLists == 0 then
     print("EquipmentInjection: WARNING -- no target lists matched, nothing will be injected")
     print(
-        "EquipmentInjection: edit targetPrefixes in Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_Config.lua")
+        "EquipmentInjection: edit targetPrefixes in Data/SKSE/Plugins/LuaPatcher/Scripts/EquipmentInjection_config.lua")
 end
 
 
@@ -314,7 +314,8 @@ local function collectStats()
                 if dps and dps > 0 and dps < 1000 then
                     table.insert(weaponVals, dps)
                 elseif dps and dps >= 1000 then
-                    print(string.format("EquipmentInjection: outlier weapon %s DPS=%.2f ignored for stats", w.identifier or "unknown", dps))
+                    print(string.format("EquipmentInjection: outlier weapon %s DPS=%.2f ignored for stats",
+                        w.identifier or "unknown", dps))
                 end
             end
         end
@@ -333,7 +334,9 @@ local function collectStats()
         if #vals == 0 then return fallbackMin, fallbackMax end
         if #vals < 10 then
             local mn, mx = math.huge, -math.huge
-            for _, v in ipairs(vals) do if v < mn then mn = v end; if v > mx then mx = v end end
+            for _, v in ipairs(vals) do
+                if v < mn then mn = v end; if v > mx then mx = v end
+            end
             return mn, mx
         end
         table.sort(vals)
@@ -497,8 +500,10 @@ if CONFIG.enableArmor then
             local added, cand = inject(armor, lvl)
             if added > 0 then levelHistArmor[lvl] = (levelHistArmor[lvl] or 0) + 1 end
             injectedArmor = injectedArmor + added
-            print(string.format("EquipmentInjection: armor %s [%s] rating=%.1f value=%s -> level %d candidates=%d added=%d",
-                armor.identifier, t or "unknown", armor.armorRating or 0, tostring(armor.value), lvl, cand or #targetLists, added))
+            print(string.format(
+                "EquipmentInjection: armor %s [%s] rating=%.1f value=%s -> level %d candidates=%d added=%d",
+                armor.identifier, t or "unknown", armor.armorRating or 0, tostring(armor.value), lvl,
+                cand or #targetLists, added))
         end
     end
 else
@@ -521,8 +526,10 @@ if CONFIG.enableWeapon then
             local dps = (weapon.damage or 0) * (weapon.speed or 1)
             if not weapon.speed or weapon.speed == 0 then dps = (weapon.damage or 0) * 1.0 end
             local sk = okSkill and skill or "unknown"
-            print(string.format("EquipmentInjection: weapon %s [%s] dmg=%s speed=%.2f dps=%.2f value=%s -> level %d candidates=%d added=%d",
-                weapon.identifier, sk, tostring(weapon.damage), weapon.speed or 0, dps, tostring(weapon.value), lvl, cand or #targetLists, added))
+            print(string.format(
+                "EquipmentInjection: weapon %s [%s] dmg=%s speed=%.2f dps=%.2f value=%s -> level %d candidates=%d added=%d",
+                weapon.identifier, sk, tostring(weapon.damage), weapon.speed or 0, dps, tostring(weapon.value), lvl,
+                cand or #targetLists, added))
         end
     end
 else
@@ -543,6 +550,7 @@ end
 
 print(string.format(
     "EquipmentInjection: injected %d armor-entries and %d weapon-entries into %d leveled lists (balanced=%s maxPerItem=%d chance=%.2f)",
-    injectedArmor, injectedWeapons, #targetLists, tostring(CONFIG.balanced), CONFIG.maxListsPerItem, CONFIG.injectionChance))
+    injectedArmor, injectedWeapons, #targetLists, tostring(CONFIG.balanced), CONFIG.maxListsPerItem,
+    CONFIG.injectionChance))
 print("EquipmentInjection: armor level hist (distinct items) -> " .. histToString(levelHistArmor))
 print("EquipmentInjection: weapon level hist (distinct items) -> " .. histToString(levelHistWeapon))

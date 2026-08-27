@@ -38,7 +38,7 @@ namespace
 			if (const auto delimiter = a_identifier.find('|'); delimiter != std::string_view::npos) {
 				const auto modName = a_identifier.substr(0, delimiter);
 				const auto modForm = a_identifier.substr(delimiter + 1);
-				auto       rawFormID = static_cast<std::uint32_t>(std::stoul(std::string(modForm), nullptr, 16));
+				auto rawFormID = static_cast<std::uint32_t>(std::stoul(std::string(modForm), nullptr, 16));
 
 				const auto* mod = dataHandler->LookupModByName(modName);
 				if (mod && mod->IsLight()) {
@@ -74,7 +74,7 @@ namespace
 	// the leveled list index (single-threaded at kDataLoaded).
 	const std::unordered_map<RE::FormID, std::string>& EditorIdCache()
 	{
-		static RE::TESDataHandler*                         owner = nullptr;
+		static RE::TESDataHandler* owner = nullptr;
 		static std::unordered_map<RE::FormID, std::string> cache;
 
 		auto* dataHandler = RE::TESDataHandler::GetSingleton();
@@ -113,15 +113,15 @@ namespace
 	int FormIndex(lua_State* a_state)
 	{
 		const auto key = luaL_checkstring(a_state, 2);
-		auto*      form = ToForm(a_state, 1);
+		auto* form = ToForm(a_state, 1);
 		return LuaPatcher::FormIndexCommon(a_state, form, key);
 	}
 
 	int FormHasKeyword(lua_State* a_state)
 	{
-		auto*       form = LuaPatcher::ToAnyForm(a_state, 1);
-		auto*       keyword = LuaPatcher::CheckForm(a_state, 2);
-		auto*       kw = keyword->As<RE::BGSKeyword>();
+		auto* form = LuaPatcher::ToAnyForm(a_state, 1);
+		auto* keyword = LuaPatcher::CheckForm(a_state, 2);
+		auto* kw = keyword->As<RE::BGSKeyword>();
 		const auto* keywordForm = form->As<RE::BGSKeywordForm>();
 		lua_pushboolean(a_state, kw && keywordForm && keywordForm->HasKeyword(kw));
 		return 1;
@@ -129,7 +129,7 @@ namespace
 
 	int FormToString(lua_State* a_state)
 	{
-		auto*      form = ToForm(a_state, 1);
+		auto* form = ToForm(a_state, 1);
 		const auto identifier = FormToIdentifier(form);
 		lua_pushstring(a_state, fmt::format("Form[{}|{:08X}]", identifier, form->GetFormID()).c_str());
 		return 1;
@@ -141,7 +141,7 @@ namespace
 	{
 		const int n = lua_gettop(a_state);
 		for (int i = 1; i <= n; ++i) {
-			size_t      len = 0;
+			size_t len = 0;
 			const char* s = luaL_tolstring(a_state, i, &len);
 			if (i > 1) {
 				a_out += '\t';
@@ -184,21 +184,21 @@ namespace
 	int IsPluginInstalled(lua_State* a_state)
 	{
 		const auto name = luaL_checkstring(a_state, 1);
-		auto*      dataHandler = RE::TESDataHandler::GetSingleton();
+		auto* dataHandler = RE::TESDataHandler::GetSingleton();
 		const bool installed = dataHandler && (dataHandler->LookupLoadedModByName(name) != nullptr ||
 												  dataHandler->LookupLoadedLightModByName(name) != nullptr);
 		lua_pushboolean(a_state, installed);
 		return 1;
 	}
 
-	// Whitelisted config loader: primary Data/SKSE/Plugins/LuaPatcher/Scripts/<name>_Config.lua
-	// (flat sibling of the script, mirrors examples/<Name>/<Name>.lua + <Name>_Config.lua).
-	// Legacy fallbacks: Data/SKSE/Plugins/LuaPatcher/Config/<name>.lua and Config/<name>_Config.lua.
+	// Whitelisted config loader: primary Data/SKSE/Plugins/LuaPatcher/Scripts/<name>_config.lua
+	// (flat sibling of the script, mirrors examples/<Name>/<Name>.lua + <Name>_config.lua).
+	// Legacy fallbacks: Data/SKSE/Plugins/LuaPatcher/Config/<name>.lua and Config/<name>_config.lua.
 	// Returns the chunk's return value (usually a table) or nil on miss/error.
 	// Security: name must be a plain file name, no path separators or "..".
 	int TryLoadConfig(lua_State* a_state)
 	{
-		const char*      raw = luaL_checkstring(a_state, 1);
+		const char* raw = luaL_checkstring(a_state, 1);
 		std::string_view name(raw);
 		if (name.empty()) {
 			return luaL_argerror(a_state, 1, "config name must be non-empty");
@@ -218,12 +218,12 @@ namespace
 		namespace fs = std::filesystem;
 		const fs::path scriptDir = "Data/SKSE/Plugins/LuaPatcher/Scripts";
 		const fs::path legacyConfigDir = "Data/SKSE/Plugins/LuaPatcher/Config";
-		// Flat layout: Scripts/<Name>_Config.lua sibling to Scripts/<Name>.lua (matches examples/)
-		fs::path file = scriptDir / (baseName + "_Config.lua");
+		// Flat layout: Scripts/<Name>_config.lua sibling to Scripts/<Name>.lua (matches examples/)
+		fs::path file = scriptDir / (baseName + "_config.lua");
 		if (!fs::exists(file)) {
-			// Legacy fallbacks: Config/<Name>.lua and Config/<Name>_Config.lua
+			// Legacy fallbacks: Config/<Name>.lua and Config/<Name>_config.lua
 			fs::path legacy1 = legacyConfigDir / (baseName + ".lua");
-			fs::path legacy2 = legacyConfigDir / (baseName + "_Config.lua");
+			fs::path legacy2 = legacyConfigDir / (baseName + "_config.lua");
 			if (fs::exists(legacy1)) {
 				file = legacy1;
 			} else if (fs::exists(legacy2)) {

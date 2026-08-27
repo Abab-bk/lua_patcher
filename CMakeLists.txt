@@ -42,6 +42,8 @@ else()
     # Microsoft::DirectXTK transitively).
     find_package(directxtk CONFIG REQUIRED)
     # rapidcsv must be in vcpkg.json (CommonLibSSE-NG unconditionally adds it as an include dir)
+    # sol2 is header-only; the Lua interpreter comes from the lua port.
+    find_package(sol2 CONFIG REQUIRED)
     find_package(unofficial-lua CONFIG REQUIRED)
 
     # CommonLibSSE-NG
@@ -103,7 +105,7 @@ else()
     target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src"
                                                        "${CMAKE_CURRENT_BINARY_DIR}/src")
 
-    target_link_libraries(${PROJECT_NAME} PRIVATE unofficial::lua::lua)
+    target_link_libraries(${PROJECT_NAME} PRIVATE sol2::sol2 unofficial::lua::lua)
 
     set_target_properties(
         ${PROJECT_NAME}

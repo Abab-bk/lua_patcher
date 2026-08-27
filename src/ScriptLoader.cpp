@@ -30,21 +30,7 @@ namespace
 		return filename.ends_with("_config.lua");
 	}
 
-	// Message handler for lua_pcall: turns errors into a full stack traceback.
-	int TracebackHandler(lua_State* a_state)
-	{
-		const char* msg = lua_tostring(a_state, 1);
-		if (msg == nullptr) {
-			if (luaL_callmeta(a_state, 1, "__tostring") && lua_type(a_state, -1) == LUA_TSTRING) {
-				return 1;
-			}
-			msg = lua_pushfstring(a_state, "(error object is a %s value)", luaL_typename(a_state, 1));
-		}
-		luaL_traceback(a_state, a_state, msg, 1);
-		return 1;
-	}
-
-	void RunScript(lua_State* a_state, const std::filesystem::path& a_path)
+	void RunScript(sol::state_view a_lua, const std::filesystem::path& a_path)
 	{
 		std::ifstream file(a_path, std::ios::binary);
 
@@ -59,40 +45,35 @@ namespace
 
 		const auto chunkName = "@" + a_path.generic_string();
 
-		if (luaL_loadbufferx(a_state, contents.data(), contents.size(), chunkName.c_str(), nullptr) != LUA_OK) {
-			logger::error("LuaPatcher: failed to load script '{}': {}", a_path.generic_string(), lua_tostring(a_state, -1));
-			lua_pop(a_state, 1);
-			return;
-		}
-
-		lua_pushcfunction(a_state, TracebackHandler);
-		lua_insert(a_state, -2);
-
-		if (lua_pcall(a_state, 0, 0, -2) != LUA_OK) {
-			logger::error("LuaPatcher: script '{}' failed: {}", a_path.generic_string(), lua_tostring(a_state, -1));
-			lua_pop(a_state, 1);
+		// sol2's protected call attaches a full stack traceback to the error message.
+		sol::protected_function_result result = a_lua.safe_script(contents, sol::script_pass_on_error, chunkName, sol::load_mode::any);
+		if (!result.valid()) {
+			sol::error err = result;
+			logger::error("LuaPatcher: script '{}' failed: {}", a_path.generic_string(), err.what());
 		}
 	}
 
 	// Scripts are trusted config code, but the interpreter should not be able to
 	// touch the machine out of the box: strip file-system and process functions.
-	void RestrictLibraries(lua_State* a_state)
+	void RestrictLibraries(sol::state_view a_lua)
 	{
-		lua_getglobal(a_state, "os");
-		if (lua_istable(a_state, -1)) {
-			for (const char* name : { "execute", "exit", "remove", "rename", "tmpname" }) {
-				lua_pushnil(a_state);
-				lua_setfield(a_state, -2, name);
-			}
-		}
+		a_lua["os"]["execute"] = sol::nil;
+		a_lua["os"]["exit"] = sol::nil;
+		a_lua["os"]["remove"] = sol::nil;
+		a_lua["os"]["rename"] = sol::nil;
+		a_lua["os"]["tmpname"] = sol::nil;
 
-		lua_pop(a_state, 1);
+		a_lua["io"] = sol::nil;
+		a_lua["debug"] = sol::nil;
+	}
 
-		lua_pushnil(a_state);
-		lua_setglobal(a_state, "io");
-
-		lua_pushnil(a_state);
-		lua_setglobal(a_state, "debug");
+	// sol2 prints C++ exceptions to stderr before converting them to Lua errors;
+	// route that noise away (pcall'd script errors should only surface in the log).
+	int QuietExceptionHandler(lua_State* a_state, sol::optional<const std::exception&> a_exception, sol::string_view a_what)
+	{
+		(void)a_exception;
+		lua_pushlstring(a_state, a_what.data(), a_what.size());
+		return 1;
 	}
 }
 
@@ -121,26 +102,20 @@ namespace LuaPatcher
 			return;
 		}
 
-		lua_State* state = luaL_newstate();
-		if (!state) {
-			logger::error("LuaPatcher: failed to create Lua state");
-			return;
-		}
+		sol::state lua;
+		lua.set_exception_handler(QuietExceptionHandler);
+		lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::coroutine, sol::lib::string,
+			sol::lib::os, sol::lib::math, sol::lib::table, sol::lib::utf8, sol::lib::io, sol::lib::debug);
 
-		luaL_openlibs(state);
-
-		RestrictLibraries(state);
-		RegisterApi(state);
-
-		RegisterLeveledList(state);
-		RegisterEquipment(state);
-		RegisterMagic(state);
+		RestrictLibraries(lua);
+		RegisterApi(lua);
+		RegisterLeveledList(lua);
+		RegisterEquipment(lua);
+		RegisterMagic(lua);
 
 		for (const auto& script : scripts) {
 			logger::info("LuaPatcher: running script '{}'", script.generic_string());
-			RunScript(state, script);
+			RunScript(lua, script);
 		}
-
-		lua_close(state);
 	}
 }

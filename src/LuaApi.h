@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lua.hpp>
+#include <sol/sol.hpp>
 
 #include <string_view>
 
@@ -11,12 +11,31 @@ namespace RE
 
 namespace LuaPatcher
 {
-	inline constexpr std::string_view kFormMeta = "LuaPatcher.Form";
-	inline constexpr std::string_view kLeveledListMeta = "LuaPatcher.LeveledList";
-	inline constexpr std::string_view kWeaponMeta = "LuaPatcher.Weapon";
-	inline constexpr std::string_view kArmorMeta = "LuaPatcher.Armor";
-	inline constexpr std::string_view kSpellMeta = "LuaPatcher.Spell";
-	inline constexpr std::string_view kMagicEffectMeta = "LuaPatcher.MagicEffect";
+	// sol2 usertype wrappers for RE::TESForm pointers. One usertype per form
+	// class (Form base + typed wrappers registered with sol::bases), mirroring
+	// the old per-metatable userdata dispatch.
+	struct LuaForm
+	{
+		RE::TESForm* form;
+	};
+	struct LuaWeapon : LuaForm
+	{};
+	struct LuaArmor : LuaForm
+	{};
+	struct LuaLeveledList : LuaForm
+	{};
+	struct LuaSpell : LuaForm
+	{};
+	struct LuaMagicEffect : LuaForm
+	{};
+
+	// Fallback __index handler: raises a Lua error for unknown properties
+	// instead of silently returning nil (matches the pre-sol2 behavior).
+	template <class T>
+	inline sol::object UnknownPropertyGetter(const T&)
+	{
+		throw sol::error{ "unknown property" };
+	}
 
 	// Resolves a "Plugin.esm|000123" / "Plugin.esm|123" / EditorID identifier, mirroring
 	// SkyPatcher's GetFormFromIdentifier (light plugins mask to 0xFFF). Results are cached.
@@ -24,27 +43,24 @@ namespace LuaPatcher
 
 	// Accepts an identifier string or any form userdata (Form/LeveledList/Weapon/Armor).
 	// Raises a Lua argument error if the value does not resolve to a loaded form.
-	RE::TESForm* CheckForm(lua_State* a_state, int a_index);
+	RE::TESForm* CheckForm(sol::object a_value);
 
 	// Returns the TESForm stored in any form userdata at a_index (no identifier strings).
-	RE::TESForm* ToAnyForm(lua_State* a_state, int a_index);
+	RE::TESForm* ToAnyForm(sol::object a_value);
 
-	// Pushes a typed userdata for a_form (Weapon/Armor/LeveledList/Form by form type),
-	// or nil for a null form. Returns 1.
-	int PushForm(lua_State* a_state, RE::TESForm* a_form);
+	// Pushes a typed userdata for a_form (Weapon/Armor/LeveledList/Spell/MagicEffect/Form
+	// by form type), or nil for a null form.
+	sol::object PushForm(sol::state_view a_lua, RE::TESForm* a_form);
 
-	// Shared property lookup for the Form and typed metatables.
-	int FormIndexCommon(lua_State* a_state, RE::TESForm* a_form, std::string_view a_key);
+	// Registers the `lua_patcher` global table, the `print` override and the Form usertype.
+	void RegisterApi(sol::state_view a_lua);
 
-	// Registers the `lua_patcher` global table, the `print` override and the Form metatable.
-	void RegisterApi(lua_State* a_state);
+	// Registers the LeveledList usertype and the leveled list API functions.
+	void RegisterLeveledList(sol::state_view a_lua);
 
-	// Registers the LeveledList metatable and the leveled list API functions.
-	void RegisterLeveledList(lua_State* a_state);
+	// Registers the Weapon/Armor usertypes and the equipment API functions.
+	void RegisterEquipment(sol::state_view a_lua);
 
-	// Registers the Weapon/Armor metatables and the equipment API functions.
-	void RegisterEquipment(lua_State* a_state);
-
-	// Registers Spell/MagicEffect metatables and magic API functions.
-	void RegisterMagic(lua_State* a_state);
+	// Registers Spell/MagicEffect usertypes and magic API functions.
+	void RegisterMagic(sol::state_view a_lua);
 }

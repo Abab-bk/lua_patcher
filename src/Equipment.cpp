@@ -9,23 +9,12 @@
 #include <RE/T/TESObjectWEAP.h>
 
 #include <cstdint>
-#include <cstring>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
-	RE::TESForm* ToWeaponForm(lua_State* a_state, int a_index)
-	{
-		return *static_cast<RE::TESForm**>(
-			luaL_checkudata(a_state, a_index, LuaPatcher::kWeaponMeta.data()));
-	}
-
-	RE::TESForm* ToArmorForm(lua_State* a_state, int a_index)
-	{
-		return *static_cast<RE::TESForm**>(
-			luaL_checkudata(a_state, a_index, LuaPatcher::kArmorMeta.data()));
-	}
-
 	std::string_view WeaponTypeName(RE::WEAPON_TYPE a_type)
 	{
 		switch (a_type) {
@@ -73,160 +62,26 @@ namespace
 		return "Other";
 	}
 
-	// ---- Weapon keyword helpers ----
-	int Weapon_AddKeyword(lua_State* a_state)
+	// ---- keyword helpers (shared by Weapon/Armor) ----
+	RE::BGSKeyword* CheckKeyword(sol::object a_value)
 	{
-		auto* form = ToWeaponForm(a_state, 1);
-		auto* weap = form->As<RE::TESObjectWEAP>();
-		auto* kwForm = LuaPatcher::CheckForm(a_state, 2);
-		auto* kw = kwForm->As<RE::BGSKeyword>();
-		if (!kw) {
-			return luaL_argerror(a_state, 2, "expected a keyword form");
+		auto* keyword = LuaPatcher::CheckForm(a_value)->As<RE::BGSKeyword>();
+		if (!keyword) {
+			throw sol::error{ "expected a keyword form" };
 		}
-		bool added = weap->AddKeyword(kw);
-		lua_pushboolean(a_state, added);
-		return 1;
+		return keyword;
 	}
 
-	int Weapon_RemoveKeyword(lua_State* a_state)
+	bool AddKeyword(RE::TESForm* a_form, sol::object a_value)
 	{
-		auto* form = ToWeaponForm(a_state, 1);
-		auto* weap = form->As<RE::TESObjectWEAP>();
-		auto* kwForm = LuaPatcher::CheckForm(a_state, 2);
-		auto* kw = kwForm->As<RE::BGSKeyword>();
-		if (!kw) {
-			return luaL_argerror(a_state, 2, "expected a keyword form");
-		}
-		bool removed = weap->RemoveKeyword(kw);
-		lua_pushboolean(a_state, removed);
-		return 1;
+		auto* keywordForm = a_form->As<RE::BGSKeywordForm>();
+		return keywordForm && keywordForm->AddKeyword(CheckKeyword(a_value));
 	}
 
-	int WeaponIndex(lua_State* a_state)
+	bool RemoveKeyword(RE::TESForm* a_form, sol::object a_value)
 	{
-		auto*      form = ToWeaponForm(a_state, 1);
-		auto*      weapon = form->As<RE::TESObjectWEAP>();
-		const auto key = luaL_checkstring(a_state, 2);
-
-		if (std::string_view(key) == "damage") {
-			lua_pushinteger(a_state, weapon->GetAttackDamage());
-			return 1;
-		}
-		if (std::string_view(key) == "speed") {
-			lua_pushnumber(a_state, weapon->GetSpeed());
-			return 1;
-		}
-		if (std::string_view(key) == "reach") {
-			lua_pushnumber(a_state, weapon->GetReach());
-			return 1;
-		}
-		if (std::string_view(key) == "stagger") {
-			lua_pushnumber(a_state, weapon->GetStagger());
-			return 1;
-		}
-		if (std::string_view(key) == "critDamage") {
-			lua_pushinteger(a_state, weapon->GetCritDamage());
-			return 1;
-		}
-		if (std::string_view(key) == "weaponType") {
-			const auto type = WeaponTypeName(weapon->GetWeaponType());
-			lua_pushlstring(a_state, type.data(), type.size());
-			return 1;
-		}
-		if (std::string_view(key) == "skill") {
-			const auto skill = WeaponSkillName(weapon);
-			lua_pushlstring(a_state, skill.data(), skill.size());
-			return 1;
-		}
-		if (std::string_view(key) == "melee") {
-			lua_pushboolean(a_state, weapon->IsMelee());
-			return 1;
-		}
-		if (std::string_view(key) == "ranged") {
-			lua_pushboolean(a_state, weapon->IsRanged());
-			return 1;
-		}
-		if (std::string_view(key) == "bow") {
-			lua_pushboolean(a_state, weapon->IsBow());
-			return 1;
-		}
-		if (std::string_view(key) == "staff") {
-			lua_pushboolean(a_state, weapon->IsStaff());
-			return 1;
-		}
-		if (std::string_view(key) == "crossbow") {
-			lua_pushboolean(a_state, weapon->IsCrossbow());
-			return 1;
-		}
-		if (std::string_view(key) == "playable") {
-			lua_pushboolean(a_state, weapon->GetPlayable());
-			return 1;
-		}
-		if (std::string_view(key) == "addKeyword") {
-			lua_pushcfunction(a_state, Weapon_AddKeyword);
-			return 1;
-		}
-		if (std::string_view(key) == "removeKeyword") {
-			lua_pushcfunction(a_state, Weapon_RemoveKeyword);
-			return 1;
-		}
-
-		return LuaPatcher::FormIndexCommon(a_state, form, key);
-	}
-
-	int WeaponNewIndex(lua_State* a_state)
-	{
-		auto*       form = ToWeaponForm(a_state, 1);
-		auto*       weap = form->As<RE::TESObjectWEAP>();
-		const char* key = luaL_checkstring(a_state, 2);
-
-		if (std::strcmp(key, "damage") == 0) {
-			auto v = luaL_checkinteger(a_state, 3);
-			if (v < 0)
-				v = 0;
-			if (v > 0xFFFF)
-				v = 0xFFFF;
-			weap->attackDamage = static_cast<std::uint16_t>(v);
-			return 0;
-		}
-		if (std::strcmp(key, "speed") == 0) {
-			float v = static_cast<float>(luaL_checknumber(a_state, 3));
-			weap->weaponData.speed = v;
-			return 0;
-		}
-		if (std::strcmp(key, "reach") == 0) {
-			float v = static_cast<float>(luaL_checknumber(a_state, 3));
-			weap->weaponData.reach = v;
-			return 0;
-		}
-		if (std::strcmp(key, "stagger") == 0) {
-			float v = static_cast<float>(luaL_checknumber(a_state, 3));
-			weap->weaponData.staggerValue = v;
-			return 0;
-		}
-		if (std::strcmp(key, "critDamage") == 0) {
-			auto v = luaL_checkinteger(a_state, 3);
-			if (v < 0)
-				v = 0;
-			if (v > 0xFFFF)
-				v = 0xFFFF;
-			weap->criticalData.damage = static_cast<std::uint16_t>(v);
-			return 0;
-		}
-		if (std::strcmp(key, "weight") == 0) {
-			float v = static_cast<float>(luaL_checknumber(a_state, 3));
-			weap->weight = v;
-			return 0;
-		}
-		if (std::strcmp(key, "value") == 0) {
-			auto v = luaL_checkinteger(a_state, 3);
-			if (v < 0)
-				v = 0;
-			weap->value = static_cast<std::uint32_t>(v);
-			return 0;
-		}
-
-		return luaL_error(a_state, "property '%s' is read-only or not writable on Weapon", key);
+		auto* keywordForm = a_form->As<RE::BGSKeywordForm>();
+		return keywordForm && keywordForm->RemoveKeyword(CheckKeyword(a_value));
 	}
 
 	std::string_view ArmorTypeName(RE::BIPED_MODEL::ArmorType a_type)
@@ -279,148 +134,27 @@ namespace
 		}
 	}
 
-	int Armor_AddKeyword(lua_State* a_state)
-	{
-		auto* form = ToArmorForm(a_state, 1);
-		auto* armor = form->As<RE::TESObjectARMO>();
-		auto* kwForm = LuaPatcher::CheckForm(a_state, 2);
-		auto* kw = kwForm->As<RE::BGSKeyword>();
-		if (!kw) {
-			return luaL_argerror(a_state, 2, "expected a keyword form");
-		}
-		bool added = armor->AddKeyword(kw);
-		lua_pushboolean(a_state, added);
-		return 1;
-	}
-
-	int Armor_RemoveKeyword(lua_State* a_state)
-	{
-		auto* form = ToArmorForm(a_state, 1);
-		auto* armor = form->As<RE::TESObjectARMO>();
-		auto* kwForm = LuaPatcher::CheckForm(a_state, 2);
-		auto* kw = kwForm->As<RE::BGSKeyword>();
-		if (!kw) {
-			return luaL_argerror(a_state, 2, "expected a keyword form");
-		}
-		bool removed = armor->RemoveKeyword(kw);
-		lua_pushboolean(a_state, removed);
-		return 1;
-	}
-
-	int ArmorIndex(lua_State* a_state)
-	{
-		auto*      form = ToArmorForm(a_state, 1);
-		auto*      armor = form->As<RE::TESObjectARMO>();
-		const auto key = luaL_checkstring(a_state, 2);
-
-		if (std::string_view(key) == "armorRating") {
-			lua_pushnumber(a_state, armor->GetArmorRating());
-			return 1;
-		}
-		if (std::string_view(key) == "armorType") {
-			const auto* biped = armor->As<RE::BGSBipedObjectForm>();
-			const auto  type = biped ? ArmorTypeName(biped->GetArmorType()) : std::string_view("Other");
-			lua_pushlstring(a_state, type.data(), type.size());
-			return 1;
-		}
-		if (std::string_view(key) == "slots") {
-			const auto* biped = armor->As<RE::BGSBipedObjectForm>();
-			lua_createtable(a_state, 0, 4);
-			lua_Integer index = 1;
-			if (biped) {
-				const auto mask = biped->GetSlotMask();
-				for (std::uint32_t bit = 1; bit != 0; bit <<= 1) {
-					const auto slot = static_cast<RE::BIPED_MODEL::BipedObjectSlot>(bit);
-					if (mask.any(slot)) {
-						const auto name = SlotName(slot);
-						lua_pushlstring(a_state, name.data(), name.size());
-						lua_rawseti(a_state, -2, index++);
-					}
-				}
-			}
-			return 1;
-		}
-		if (std::string_view(key) == "playable") {
-			const bool playable = (form->GetFormFlags() & RE::TESForm::RecordFlags::kNonPlayable) == 0;
-			lua_pushboolean(a_state, playable);
-			return 1;
-		}
-		if (std::string_view(key) == "addKeyword") {
-			lua_pushcfunction(a_state, Armor_AddKeyword);
-			return 1;
-		}
-		if (std::string_view(key) == "removeKeyword") {
-			lua_pushcfunction(a_state, Armor_RemoveKeyword);
-			return 1;
-		}
-
-		return LuaPatcher::FormIndexCommon(a_state, form, key);
-	}
-
-	int ArmorNewIndex(lua_State* a_state)
-	{
-		auto*       form = ToArmorForm(a_state, 1);
-		auto*       armor = form->As<RE::TESObjectARMO>();
-		const char* key = luaL_checkstring(a_state, 2);
-
-		if (std::strcmp(key, "armorRating") == 0) {
-			double v = luaL_checknumber(a_state, 3);
-			if (v < 0)
-				v = 0;
-			armor->armorRating = static_cast<std::uint32_t>(v * 100.0 + 0.5);
-			return 0;
-		}
-		if (std::strcmp(key, "weight") == 0) {
-			float v = static_cast<float>(luaL_checknumber(a_state, 3));
-			armor->weight = v;
-			return 0;
-		}
-		if (std::strcmp(key, "value") == 0) {
-			auto v = luaL_checkinteger(a_state, 3);
-			if (v < 0)
-				v = 0;
-			armor->value = static_cast<std::uint32_t>(v);
-			return 0;
-		}
-
-		return luaL_error(a_state, "property '%s' is read-only or not writable on Armor", key);
-	}
-
-	int WeaponToString(lua_State* a_state)
-	{
-		auto* form = ToWeaponForm(a_state, 1);
-		lua_pushstring(a_state, fmt::format("Weapon[{:08X}]", form->GetFormID()).c_str());
-		return 1;
-	}
-
-	int ArmorToString(lua_State* a_state)
-	{
-		auto* form = ToArmorForm(a_state, 1);
-		lua_pushstring(a_state, fmt::format("Armor[{:08X}]", form->GetFormID()).c_str());
-		return 1;
-	}
-
 	template <class T>
-	int PushFormArray(lua_State* a_state)
+	sol::object PushFormArray(sol::this_state a_state)
 	{
-		auto*       dataHandler = RE::TESDataHandler::GetSingleton();
+		sol::state_view lua(a_state);
+		auto* dataHandler = RE::TESDataHandler::GetSingleton();
 		const auto& forms = dataHandler->GetFormArray<T>();
 
-		lua_createtable(a_state, static_cast<int>(forms.size()), 0);
+		sol::table result = lua.create_table(static_cast<int>(forms.size()), 0);
 		lua_Integer index = 1;
 		for (auto* form : forms) {
-			LuaPatcher::PushForm(a_state, form);
-			lua_rawseti(a_state, -2, index++);
+			result[index++] = LuaPatcher::PushForm(lua, form);
 		}
-		return 1;
+		return result;
 	}
 
-	int AllWeapons(lua_State* a_state)
+	sol::object AllWeapons(sol::this_state a_state)
 	{
 		return PushFormArray<RE::TESObjectWEAP>(a_state);
 	}
 
-	int AllArmors(lua_State* a_state)
+	sol::object AllArmors(sol::this_state a_state)
 	{
 		return PushFormArray<RE::TESObjectARMO>(a_state);
 	}
@@ -428,31 +162,59 @@ namespace
 
 namespace LuaPatcher
 {
-	void RegisterEquipment(lua_State* a_state)
+	void RegisterEquipment(sol::state_view a_lua)
 	{
-		luaL_newmetatable(a_state, kWeaponMeta.data());
-		lua_pushcfunction(a_state, WeaponIndex);
-		lua_setfield(a_state, -2, "__index");
-		lua_pushcfunction(a_state, WeaponNewIndex);
-		lua_setfield(a_state, -2, "__newindex");
-		lua_pushcfunction(a_state, WeaponToString);
-		lua_setfield(a_state, -2, "__tostring");
-		lua_pop(a_state, 1);
+		a_lua.new_usertype<LuaWeapon>("Weapon", sol::base_classes, sol::bases<LuaForm>(), sol::meta_function::index, sol::readonly_property(UnknownPropertyGetter<LuaWeapon>), sol::meta_function::to_string, [](const LuaWeapon& a_form) { return fmt::format("Weapon[{:08X}]", a_form.form->GetFormID()); }, "damage", sol::property([](const LuaWeapon& a_form) { return static_cast<lua_Integer>(a_form.form->As<RE::TESObjectWEAP>()->GetAttackDamage()); }, [](LuaWeapon& a_form, lua_Integer a_value) {
+					auto* weapon = a_form.form->As<RE::TESObjectWEAP>();
+					if (a_value < 0) {
+						a_value = 0;
+					}
+					if (a_value > 0xFFFF) {
+						a_value = 0xFFFF;
+					}
+					weapon->attackDamage = static_cast<std::uint16_t>(a_value); }), "speed", sol::property([](const LuaWeapon& a_form) { return a_form.form->As<RE::TESObjectWEAP>()->GetSpeed(); }, [](LuaWeapon& a_form, double a_value) { a_form.form->As<RE::TESObjectWEAP>()->weaponData.speed = static_cast<float>(a_value); }), "reach", sol::property([](const LuaWeapon& a_form) { return a_form.form->As<RE::TESObjectWEAP>()->GetReach(); }, [](LuaWeapon& a_form, double a_value) { a_form.form->As<RE::TESObjectWEAP>()->weaponData.reach = static_cast<float>(a_value); }), "stagger", sol::property([](const LuaWeapon& a_form) { return a_form.form->As<RE::TESObjectWEAP>()->GetStagger(); }, [](LuaWeapon& a_form, double a_value) { a_form.form->As<RE::TESObjectWEAP>()->weaponData.staggerValue = static_cast<float>(a_value); }), "critDamage", sol::property([](const LuaWeapon& a_form) { return static_cast<lua_Integer>(a_form.form->As<RE::TESObjectWEAP>()->GetCritDamage()); }, [](LuaWeapon& a_form, lua_Integer a_value) {
+					auto* weapon = a_form.form->As<RE::TESObjectWEAP>();
+					if (a_value < 0) {
+						a_value = 0;
+					}
+					if (a_value > 0xFFFF) {
+						a_value = 0xFFFF;
+					}
+					weapon->criticalData.damage = static_cast<std::uint16_t>(a_value); }), "weight", sol::property([](const LuaWeapon& a_form) { return a_form.form->As<RE::TESObjectWEAP>()->weight; }, [](LuaWeapon& a_form, double a_value) { a_form.form->As<RE::TESObjectWEAP>()->weight = static_cast<float>(a_value); }), "value", sol::property([](const LuaWeapon& a_form) { return static_cast<lua_Integer>(a_form.form->As<RE::TESObjectWEAP>()->value); }, [](LuaWeapon& a_form, lua_Integer a_value) {
+					auto* weapon = a_form.form->As<RE::TESObjectWEAP>();
+					if (a_value < 0) {
+						a_value = 0;
+					}
+					weapon->value = static_cast<std::uint32_t>(a_value); }), "weaponType", sol::property([](const LuaWeapon& a_form) { return std::string(WeaponTypeName(a_form.form->As<RE::TESObjectWEAP>()->GetWeaponType())); }), "skill", sol::property([](const LuaWeapon& a_form) { return std::string(WeaponSkillName(a_form.form->As<RE::TESObjectWEAP>())); }), "melee", sol::property([](const LuaWeapon& a_form) { return a_form.form->As<RE::TESObjectWEAP>()->IsMelee(); }), "ranged", sol::property([](const LuaWeapon& a_form) { return a_form.form->As<RE::TESObjectWEAP>()->IsRanged(); }), "bow", sol::property([](const LuaWeapon& a_form) { return a_form.form->As<RE::TESObjectWEAP>()->IsBow(); }), "staff", sol::property([](const LuaWeapon& a_form) { return a_form.form->As<RE::TESObjectWEAP>()->IsStaff(); }), "crossbow", sol::property([](const LuaWeapon& a_form) { return a_form.form->As<RE::TESObjectWEAP>()->IsCrossbow(); }), "playable", sol::property([](const LuaWeapon& a_form) { return a_form.form->As<RE::TESObjectWEAP>()->GetPlayable(); }), "addKeyword", [](LuaWeapon& a_form, sol::object a_keyword) { return AddKeyword(a_form.form, a_keyword); }, "removeKeyword", [](LuaWeapon& a_form, sol::object a_keyword) { return RemoveKeyword(a_form.form, a_keyword); });
 
-		luaL_newmetatable(a_state, kArmorMeta.data());
-		lua_pushcfunction(a_state, ArmorIndex);
-		lua_setfield(a_state, -2, "__index");
-		lua_pushcfunction(a_state, ArmorNewIndex);
-		lua_setfield(a_state, -2, "__newindex");
-		lua_pushcfunction(a_state, ArmorToString);
-		lua_setfield(a_state, -2, "__tostring");
-		lua_pop(a_state, 1);
+		a_lua.new_usertype<LuaArmor>("Armor", sol::base_classes, sol::bases<LuaForm>(), sol::meta_function::index, sol::readonly_property(UnknownPropertyGetter<LuaArmor>), sol::meta_function::to_string, [](const LuaArmor& a_form) { return fmt::format("Armor[{:08X}]", a_form.form->GetFormID()); }, "armorRating", sol::property([](const LuaArmor& a_form) { return a_form.form->As<RE::TESObjectARMO>()->GetArmorRating(); }, [](LuaArmor& a_form, double a_value) {
+					auto* armor = a_form.form->As<RE::TESObjectARMO>();
+					if (a_value < 0) {
+						a_value = 0;
+					}
+					armor->armorRating = static_cast<std::uint32_t>(a_value * 100.0 + 0.5); }), "armorType", sol::property([](const LuaArmor& a_form) {
+				const auto* biped = a_form.form->As<RE::BGSBipedObjectForm>();
+				return biped ? std::string(ArmorTypeName(biped->GetArmorType())) : std::string("Other"); }), "slots", sol::property([](const LuaArmor& a_form) {
+				const auto* biped = a_form.form->As<RE::BGSBipedObjectForm>();
+				std::vector<std::string> result;
+				if (biped) {
+					const auto mask = biped->GetSlotMask();
+					for (std::uint32_t bit = 1; bit != 0; bit <<= 1) {
+						const auto slot = static_cast<RE::BIPED_MODEL::BipedObjectSlot>(bit);
+						if (mask.any(slot)) {
+							result.emplace_back(SlotName(slot));
+						}
+					}
+				}
+				return result; }), "playable", sol::property([](const LuaArmor& a_form) { return (a_form.form->GetFormFlags() & RE::TESForm::RecordFlags::kNonPlayable) == 0; }), "weight", sol::property([](const LuaArmor& a_form) { return a_form.form->As<RE::TESObjectARMO>()->weight; }, [](LuaArmor& a_form, double a_value) { a_form.form->As<RE::TESObjectARMO>()->weight = static_cast<float>(a_value); }), "value", sol::property([](const LuaArmor& a_form) { return static_cast<lua_Integer>(a_form.form->As<RE::TESObjectARMO>()->value); }, [](LuaArmor& a_form, lua_Integer a_value) {
+					auto* armor = a_form.form->As<RE::TESObjectARMO>();
+					if (a_value < 0) {
+						a_value = 0;
+					}
+					armor->value = static_cast<std::uint32_t>(a_value); }), "addKeyword", [](LuaArmor& a_form, sol::object a_keyword) { return AddKeyword(a_form.form, a_keyword); }, "removeKeyword", [](LuaArmor& a_form, sol::object a_keyword) { return RemoveKeyword(a_form.form, a_keyword); });
 
-		lua_getglobal(a_state, "lua_patcher");
-		lua_pushcfunction(a_state, AllWeapons);
-		lua_setfield(a_state, -2, "allWeapons");
-		lua_pushcfunction(a_state, AllArmors);
-		lua_setfield(a_state, -2, "allArmors");
-		lua_pop(a_state, 1);
+		sol::table patcher = a_lua["lua_patcher"].get<sol::table>();
+		patcher["allWeapons"] = &AllWeapons;
+		patcher["allArmors"] = &AllArmors;
 	}
 }

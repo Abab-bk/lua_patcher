@@ -5,6 +5,8 @@ A SKSE plugin.
 LuaPatcher is similar to SkyPatcher, allowing you to patch Forms at runtime, but
 using Lua.
 
+AI Disclosure: AI was used to code this mod.
+
 Credits:
 
 - [CommonLibSSE-NG](https://github.com/alandtse/CommonLibVR/tree/ng)

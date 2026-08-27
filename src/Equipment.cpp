@@ -3,10 +3,13 @@
 #include "PCH.h"
 
 #include <RE/B/BGSBipedObjectForm.h>
+#include <RE/B/BGSKeyword.h>
+#include <RE/B/BGSKeywordForm.h>
 #include <RE/T/TESObjectARMO.h>
 #include <RE/T/TESObjectWEAP.h>
 
 #include <cstdint>
+#include <cstring>
 #include <string_view>
 
 namespace
@@ -70,6 +73,35 @@ namespace
 		return "Other";
 	}
 
+	// ---- Weapon keyword helpers ----
+	int Weapon_AddKeyword(lua_State* a_state)
+	{
+		auto* form = ToWeaponForm(a_state, 1);
+		auto* weap = form->As<RE::TESObjectWEAP>();
+		auto* kwForm = LuaPatcher::CheckForm(a_state, 2);
+		auto* kw = kwForm->As<RE::BGSKeyword>();
+		if (!kw) {
+			return luaL_argerror(a_state, 2, "expected a keyword form");
+		}
+		bool added = weap->AddKeyword(kw);
+		lua_pushboolean(a_state, added);
+		return 1;
+	}
+
+	int Weapon_RemoveKeyword(lua_State* a_state)
+	{
+		auto* form = ToWeaponForm(a_state, 1);
+		auto* weap = form->As<RE::TESObjectWEAP>();
+		auto* kwForm = LuaPatcher::CheckForm(a_state, 2);
+		auto* kw = kwForm->As<RE::BGSKeyword>();
+		if (!kw) {
+			return luaL_argerror(a_state, 2, "expected a keyword form");
+		}
+		bool removed = weap->RemoveKeyword(kw);
+		lua_pushboolean(a_state, removed);
+		return 1;
+	}
+
 	int WeaponIndex(lua_State* a_state)
 	{
 		auto*      form = ToWeaponForm(a_state, 1);
@@ -130,8 +162,66 @@ namespace
 			lua_pushboolean(a_state, weapon->GetPlayable());
 			return 1;
 		}
+		if (std::string_view(key) == "addKeyword") {
+			lua_pushcfunction(a_state, Weapon_AddKeyword);
+			return 1;
+		}
+		if (std::string_view(key) == "removeKeyword") {
+			lua_pushcfunction(a_state, Weapon_RemoveKeyword);
+			return 1;
+		}
 
 		return LuaPatcher::FormIndexCommon(a_state, form, key);
+	}
+
+	int WeaponNewIndex(lua_State* a_state)
+	{
+		auto* form = ToWeaponForm(a_state, 1);
+		auto* weap = form->As<RE::TESObjectWEAP>();
+		const char* key = luaL_checkstring(a_state, 2);
+
+		if (std::strcmp(key, "damage") == 0) {
+			auto v = luaL_checkinteger(a_state, 3);
+			if (v < 0) v = 0;
+			if (v > 0xFFFF) v = 0xFFFF;
+			weap->attackDamage = static_cast<std::uint16_t>(v);
+			return 0;
+		}
+		if (std::strcmp(key, "speed") == 0) {
+			float v = static_cast<float>(luaL_checknumber(a_state, 3));
+			weap->weaponData.speed = v;
+			return 0;
+		}
+		if (std::strcmp(key, "reach") == 0) {
+			float v = static_cast<float>(luaL_checknumber(a_state, 3));
+			weap->weaponData.reach = v;
+			return 0;
+		}
+		if (std::strcmp(key, "stagger") == 0) {
+			float v = static_cast<float>(luaL_checknumber(a_state, 3));
+			weap->weaponData.staggerValue = v;
+			return 0;
+		}
+		if (std::strcmp(key, "critDamage") == 0) {
+			auto v = luaL_checkinteger(a_state, 3);
+			if (v < 0) v = 0;
+			if (v > 0xFFFF) v = 0xFFFF;
+			weap->criticalData.damage = static_cast<std::uint16_t>(v);
+			return 0;
+		}
+		if (std::strcmp(key, "weight") == 0) {
+			float v = static_cast<float>(luaL_checknumber(a_state, 3));
+			weap->weight = v;
+			return 0;
+		}
+		if (std::strcmp(key, "value") == 0) {
+			auto v = luaL_checkinteger(a_state, 3);
+			if (v < 0) v = 0;
+			weap->value = static_cast<std::uint32_t>(v);
+			return 0;
+		}
+
+		return luaL_error(a_state, "property '%s' is read-only or not writable on Weapon", key);
 	}
 
 	std::string_view ArmorTypeName(RE::BIPED_MODEL::ArmorType a_type)
@@ -184,6 +274,34 @@ namespace
 		}
 	}
 
+	int Armor_AddKeyword(lua_State* a_state)
+	{
+		auto* form = ToArmorForm(a_state, 1);
+		auto* armor = form->As<RE::TESObjectARMO>();
+		auto* kwForm = LuaPatcher::CheckForm(a_state, 2);
+		auto* kw = kwForm->As<RE::BGSKeyword>();
+		if (!kw) {
+			return luaL_argerror(a_state, 2, "expected a keyword form");
+		}
+		bool added = armor->AddKeyword(kw);
+		lua_pushboolean(a_state, added);
+		return 1;
+	}
+
+	int Armor_RemoveKeyword(lua_State* a_state)
+	{
+		auto* form = ToArmorForm(a_state, 1);
+		auto* armor = form->As<RE::TESObjectARMO>();
+		auto* kwForm = LuaPatcher::CheckForm(a_state, 2);
+		auto* kw = kwForm->As<RE::BGSKeyword>();
+		if (!kw) {
+			return luaL_argerror(a_state, 2, "expected a keyword form");
+		}
+		bool removed = armor->RemoveKeyword(kw);
+		lua_pushboolean(a_state, removed);
+		return 1;
+	}
+
 	int ArmorIndex(lua_State* a_state)
 	{
 		auto*      form = ToArmorForm(a_state, 1);
@@ -222,8 +340,43 @@ namespace
 			lua_pushboolean(a_state, playable);
 			return 1;
 		}
+		if (std::string_view(key) == "addKeyword") {
+			lua_pushcfunction(a_state, Armor_AddKeyword);
+			return 1;
+		}
+		if (std::string_view(key) == "removeKeyword") {
+			lua_pushcfunction(a_state, Armor_RemoveKeyword);
+			return 1;
+		}
 
 		return LuaPatcher::FormIndexCommon(a_state, form, key);
+	}
+
+	int ArmorNewIndex(lua_State* a_state)
+	{
+		auto* form = ToArmorForm(a_state, 1);
+		auto* armor = form->As<RE::TESObjectARMO>();
+		const char* key = luaL_checkstring(a_state, 2);
+
+		if (std::strcmp(key, "armorRating") == 0) {
+			double v = luaL_checknumber(a_state, 3);
+			if (v < 0) v = 0;
+			armor->armorRating = static_cast<std::uint32_t>(v * 100.0 + 0.5);
+			return 0;
+		}
+		if (std::strcmp(key, "weight") == 0) {
+			float v = static_cast<float>(luaL_checknumber(a_state, 3));
+			armor->weight = v;
+			return 0;
+		}
+		if (std::strcmp(key, "value") == 0) {
+			auto v = luaL_checkinteger(a_state, 3);
+			if (v < 0) v = 0;
+			armor->value = static_cast<std::uint32_t>(v);
+			return 0;
+		}
+
+		return luaL_error(a_state, "property '%s' is read-only or not writable on Armor", key);
 	}
 
 	int WeaponToString(lua_State* a_state)
@@ -273,6 +426,8 @@ namespace LuaPatcher
 		luaL_newmetatable(a_state, kWeaponMeta.data());
 		lua_pushcfunction(a_state, WeaponIndex);
 		lua_setfield(a_state, -2, "__index");
+		lua_pushcfunction(a_state, WeaponNewIndex);
+		lua_setfield(a_state, -2, "__newindex");
 		lua_pushcfunction(a_state, WeaponToString);
 		lua_setfield(a_state, -2, "__tostring");
 		lua_pop(a_state, 1);
@@ -280,6 +435,8 @@ namespace LuaPatcher
 		luaL_newmetatable(a_state, kArmorMeta.data());
 		lua_pushcfunction(a_state, ArmorIndex);
 		lua_setfield(a_state, -2, "__index");
+		lua_pushcfunction(a_state, ArmorNewIndex);
+		lua_setfield(a_state, -2, "__newindex");
 		lua_pushcfunction(a_state, ArmorToString);
 		lua_setfield(a_state, -2, "__tostring");
 		lua_pop(a_state, 1);

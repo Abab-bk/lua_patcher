@@ -70,9 +70,8 @@ local CONFIG = {
 
 do
     local loaded = nil
-    local loader = lua_patcher.tryLoadConfig or lua_patcher.loadConfig
-    if loader then
-        local ok, result = pcall(loader, "EquipmentInjection")
+    if lua_patcher.tryLoadConfig then
+        local ok, result = pcall(lua_patcher.tryLoadConfig, "EquipmentInjection")
         if ok and type(result) == "table" then
             loaded = result
         elseif not ok then

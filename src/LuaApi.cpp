@@ -353,7 +353,6 @@ namespace LuaPatcher
 			{ "getForm", GetForm },
 			{ "isPluginInstalled", IsPluginInstalled },
 			{ "tryLoadConfig", TryLoadConfig },
-			{ "loadConfig", TryLoadConfig },
 			{ nullptr, nullptr },
 		};
 		luaL_setfuncs(a_state, functions, 0);

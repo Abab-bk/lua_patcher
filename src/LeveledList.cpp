@@ -10,6 +10,8 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace
@@ -298,6 +300,18 @@ namespace
 		return 0;
 	}
 
+	int LL_Has(lua_State* a_state)
+	{
+		auto*      list = ToLeveledList(a_state, 1);
+		auto*      form = LuaPatcher::CheckForm(a_state, 2);
+		const bool found = std::any_of(list->entries.begin(), list->entries.end(),
+			[form](const RE::LEVELED_OBJECT& x) {
+				return x.form->formID == form->formID;
+			});
+		lua_pushboolean(a_state, found);
+		return 1;
+	}
+
 	int LL_Clear(lua_State* a_state)
 	{
 		auto* listForm = ToForm(a_state, 1);
@@ -357,6 +371,7 @@ namespace
 			{ "removeByKeyword", LL_RemoveByKeyword },
 			{ "replace", LL_Replace },
 			{ "multiplyCount", LL_MultiplyCount },
+			{ "has", LL_Has },
 			{ "clear", LL_Clear },
 			{ "clearFlags", LL_ClearFlags },
 			{ "sort", LL_Sort },
@@ -406,7 +421,7 @@ namespace
 	int LeveledListToString(lua_State* a_state)
 	{
 		auto* form = ToForm(a_state, 1);
-		lua_pushfstring(a_state, "LeveledList[%08X]", form->formID);
+		lua_pushstring(a_state, fmt::format("LeveledList[{:08X}]", form->formID).c_str());
 		return 1;
 	}
 
@@ -414,22 +429,11 @@ namespace
 
 	int LeveledListGet(lua_State* a_state)
 	{
-		auto*               form = LuaPatcher::CheckForm(a_state, 1);
-		RE::TESLeveledList* list = nullptr;
-		if (form->As<RE::TESLevItem>()) {
-			list = form->As<RE::TESLeveledList>();
-		} else if (form->As<RE::TESLevCharacter>()) {
-			list = form->As<RE::TESLeveledList>();
-		}
-		if (!list) {
+		auto* form = LuaPatcher::CheckForm(a_state, 1);
+		if (!form->As<RE::TESLevItem>() && !form->As<RE::TESLevCharacter>()) {
 			return luaL_argerror(a_state, 1, "form is not a leveled item or leveled character list");
 		}
-
-		auto** ud = static_cast<RE::TESForm**>(
-			lua_newuserdatauv(a_state, sizeof(RE::TESForm*), 0));
-		*ud = form;
-		luaL_setmetatable(a_state, LuaPatcher::kLeveledListMeta.data());
-		return 1;
+		return LuaPatcher::PushForm(a_state, form);
 	}
 
 	template <class T>
@@ -441,10 +445,7 @@ namespace
 		lua_createtable(a_state, static_cast<int>(forms.size()), 0);
 		lua_Integer index = 1;
 		for (auto* form : forms) {
-			auto** ud = static_cast<RE::TESForm**>(
-				lua_newuserdatauv(a_state, sizeof(RE::TESForm*), 0));
-			*ud = form;
-			luaL_setmetatable(a_state, LuaPatcher::kLeveledListMeta.data());
+			LuaPatcher::PushForm(a_state, form);
 			lua_rawseti(a_state, -2, index++);
 		}
 		return 1;
@@ -458,6 +459,59 @@ namespace
 	int AllLeveledCharacters(lua_State* a_state)
 	{
 		return PushLeveledListArray<RE::TESLevCharacter>(a_state);
+	}
+
+	// Reverse index: formID -> leveled lists (TESLevItem + TESLevCharacter) that
+	// contain an entry referencing it.
+	//
+	// Snapshot semantics: built once per data handler on first call and never
+	// invalidated afterwards -- patches applied *during* this run are not
+	// reflected, which is exactly what "is this form already in the game's
+	// leveled lists" means. Safe because config parsing and patching run
+	// single-threaded at kDataLoaded and the form arrays are fixed for the
+	// session (same lifetime assumptions as SkyPatcher's cached_mod_lookup).
+	const std::unordered_map<RE::FormID, std::vector<RE::TESForm*>>& LeveledListIndexCache()
+	{
+		static RE::TESDataHandler*                                       owner = nullptr;
+		static std::unordered_map<RE::FormID, std::vector<RE::TESForm*>> index;
+
+		auto* dataHandler = RE::TESDataHandler::GetSingleton();
+		if (owner != dataHandler) {
+			index.clear();
+			owner = dataHandler;
+			if (dataHandler) {
+				for (auto* list : dataHandler->GetFormArray<RE::TESLevItem>()) {
+					for (const auto& entry : list->entries) {
+						index[entry.form->formID].push_back(list);
+					}
+				}
+				for (auto* list : dataHandler->GetFormArray<RE::TESLevCharacter>()) {
+					for (const auto& entry : list->entries) {
+						index[entry.form->formID].push_back(list);
+					}
+				}
+			}
+		}
+		return index;
+	}
+
+	int FindLeveledListsContaining(lua_State* a_state)
+	{
+		auto*       form = LuaPatcher::CheckForm(a_state, 1);
+		const auto& index = LeveledListIndexCache();
+
+		lua_createtable(a_state, 0, 0);
+		lua_Integer                      count = 1;
+		std::unordered_set<RE::TESForm*> seen;
+		if (const auto it = index.find(form->formID); it != index.end()) {
+			for (auto* list : it->second) {
+				if (seen.insert(list).second) {
+					LuaPatcher::PushForm(a_state, list);
+					lua_rawseti(a_state, -2, count++);
+				}
+			}
+		}
+		return 1;
 	}
 }
 
@@ -481,6 +535,8 @@ namespace LuaPatcher
 		lua_setfield(a_state, -2, "allLeveledItems");
 		lua_pushcfunction(a_state, AllLeveledCharacters);
 		lua_setfield(a_state, -2, "allLeveledCharacters");
+		lua_pushcfunction(a_state, FindLeveledListsContaining);
+		lua_setfield(a_state, -2, "findLeveledListsContaining");
 
 		lua_createtable(a_state, 0, 4);
 		lua_pushinteger(a_state, RE::TESLeveledList::Flag::kCalculateFromAllLevelsLTOrEqPCLevel);

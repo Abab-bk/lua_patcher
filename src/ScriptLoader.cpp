@@ -115,6 +115,7 @@ namespace LuaPatcher
 		RestrictLibraries(state);
 		RegisterApi(state);
 		RegisterLeveledList(state);
+		RegisterEquipment(state);
 
 		for (const auto& script : scripts) {
 			logger::info("LuaPatcher: running script '{}'", script.generic_string());

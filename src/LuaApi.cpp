@@ -2,7 +2,11 @@
 
 #include "PCH.h"
 
+#include <RE/B/BGSKeywordForm.h>
+#include <RE/T/TESEnchantableForm.h>
 #include <RE/T/TESForm.h>
+#include <RE/T/TESValueForm.h>
+#include <RE/T/TESWeightForm.h>
 
 #include <cstdint>
 #include <string>
@@ -53,25 +57,48 @@ namespace
 		return result;
 	}
 
-	bool IsForm(lua_State* a_state, int a_index)
-	{
-		return luaL_testudata(a_state, a_index, LuaPatcher::kFormMeta.data()) != nullptr;
-	}
-
-	bool IsLeveledList(lua_State* a_state, int a_index)
-	{
-		return luaL_testudata(a_state, a_index, LuaPatcher::kLeveledListMeta.data()) != nullptr;
-	}
-
 	RE::TESForm* ToForm(lua_State* a_state, int a_index)
 	{
 		return *static_cast<RE::TESForm**>(luaL_checkudata(a_state, a_index, LuaPatcher::kFormMeta.data()));
+	}
+
+	// Reverse of the game's editorID -> form lookup table.
+	//
+	// The virtual GetFormEditorID() returns "" for most form classes (only a few,
+	// e.g. BGSKeyword, synthesize a member-based ID), so the actual editor IDs
+	// must come from the game's own table that LookupByEditorID uses. Built once
+	// per data handler: the table is fully populated by plugin loading and
+	// read-only afterwards, so this cache has the same lifetime assumptions as
+	// the leveled list index (single-threaded at kDataLoaded).
+	const std::unordered_map<RE::FormID, std::string>& EditorIdCache()
+	{
+		static RE::TESDataHandler*                         owner = nullptr;
+		static std::unordered_map<RE::FormID, std::string> cache;
+
+		auto* dataHandler = RE::TESDataHandler::GetSingleton();
+		if (owner != dataHandler) {
+			cache.clear();
+			owner = dataHandler;
+			const auto& [map, lock] = RE::TESForm::GetAllFormsByEditorID();
+			if (map) {
+				const RE::BSReadLockGuard l{ lock };
+				for (const auto& [editorID, form] : *map) {
+					cache[form->formID] = editorID;
+				}
+			}
+		}
+		return cache;
 	}
 
 	std::string FormToIdentifier(RE::TESForm* a_form)
 	{
 		if (auto* file = a_form->GetFile(0)) {
 			return fmt::format("{}|{:06X}", file->GetFilename(), a_form->GetLocalFormID());
+		}
+
+		const auto& cache = EditorIdCache();
+		if (const auto it = cache.find(a_form->GetFormID()); it != cache.end()) {
+			return it->second;
 		}
 
 		if (const char* editorID = a_form->GetFormEditorID(); editorID && *editorID) {
@@ -88,11 +115,21 @@ namespace
 		return LuaPatcher::FormIndexCommon(a_state, form, key);
 	}
 
+	int FormHasKeyword(lua_State* a_state)
+	{
+		auto*       form = LuaPatcher::ToAnyForm(a_state, 1);
+		auto*       keyword = LuaPatcher::CheckForm(a_state, 2);
+		auto*       kw = keyword->As<RE::BGSKeyword>();
+		const auto* keywordForm = form->As<RE::BGSKeywordForm>();
+		lua_pushboolean(a_state, kw && keywordForm && keywordForm->HasKeyword(kw));
+		return 1;
+	}
+
 	int FormToString(lua_State* a_state)
 	{
 		auto*      form = ToForm(a_state, 1);
 		const auto identifier = FormToIdentifier(form);
-		lua_pushfstring(a_state, "Form[%s|%08X]", std::string(identifier).c_str(), form->GetFormID());
+		lua_pushstring(a_state, fmt::format("Form[{}|{:08X}]", identifier, form->GetFormID()).c_str());
 		return 1;
 	}
 
@@ -170,15 +207,23 @@ namespace LuaPatcher
 			return form;
 		}
 
-		if (IsLeveledList(a_state, a_index)) {
-			return *static_cast<RE::TESForm**>(lua_touserdata(a_state, a_index));
-		}
+		return ToAnyForm(a_state, a_index);
+	}
 
-		if (IsForm(a_state, a_index)) {
-			return ToForm(a_state, a_index);
+	RE::TESForm* ToAnyForm(lua_State* a_state, int a_index)
+	{
+		constexpr std::string_view metas[] = {
+			LuaPatcher::kFormMeta,
+			LuaPatcher::kLeveledListMeta,
+			LuaPatcher::kWeaponMeta,
+			LuaPatcher::kArmorMeta,
+		};
+		for (const auto meta : metas) {
+			if (auto* ud = luaL_testudata(a_state, a_index, meta.data())) {
+				return *static_cast<RE::TESForm**>(ud);
+			}
 		}
-
-		luaL_argerror(a_state, a_index, "expected a form identifier string, a Form or a LeveledList");
+		luaL_argerror(a_state, a_index, "expected a form identifier string or a Form");
 		return nullptr;
 	}
 
@@ -191,7 +236,23 @@ namespace LuaPatcher
 
 		auto** ud = static_cast<RE::TESForm**>(lua_newuserdatauv(a_state, sizeof(RE::TESForm*), 0));
 		*ud = a_form;
-		luaL_setmetatable(a_state, kFormMeta.data());
+
+		std::string_view meta = kFormMeta;
+		switch (a_form->GetFormType()) {
+		case RE::FormType::LeveledItem:
+		case RE::FormType::LeveledNPC:
+			meta = kLeveledListMeta;
+			break;
+		case RE::FormType::Weapon:
+			meta = kWeaponMeta;
+			break;
+		case RE::FormType::Armor:
+			meta = kArmorMeta;
+			break;
+		default:
+			break;
+		}
+		luaL_setmetatable(a_state, meta.data());
 		return 1;
 	}
 
@@ -243,7 +304,10 @@ namespace LuaPatcher
 			return 1;
 		}
 		if (a_key == "editorId") {
-			if (const char* editorID = a_form->GetFormEditorID(); editorID && *editorID) {
+			const auto& cache = EditorIdCache();
+			if (const auto it = cache.find(a_form->GetFormID()); it != cache.end()) {
+				lua_pushlstring(a_state, it->second.data(), it->second.size());
+			} else if (const char* editorID = a_form->GetFormEditorID(); editorID && *editorID) {
 				lua_pushstring(a_state, editorID);
 			} else {
 				lua_pushnil(a_state);
@@ -261,6 +325,59 @@ namespace LuaPatcher
 		if (a_key == "identifier") {
 			const auto identifier = FormToIdentifier(a_form);
 			lua_pushlstring(a_state, identifier.data(), identifier.size());
+			return 1;
+		}
+		if (a_key == "plugin") {
+			if (auto* file = a_form->GetFile(0)) {
+				const auto name = file->GetFilename();
+				lua_pushlstring(a_state, name.data(), name.size());
+			} else {
+				lua_pushnil(a_state);
+			}
+			return 1;
+		}
+		if (a_key == "value") {
+			const auto* valueForm = a_form->As<RE::TESValueForm>();
+			if (valueForm) {
+				lua_pushinteger(a_state, valueForm->value);
+			} else {
+				lua_pushnil(a_state);
+			}
+			return 1;
+		}
+		if (a_key == "weight") {
+			const auto* weightForm = a_form->As<RE::TESWeightForm>();
+			if (weightForm) {
+				lua_pushnumber(a_state, weightForm->weight);
+			} else {
+				lua_pushnil(a_state);
+			}
+			return 1;
+		}
+		if (a_key == "enchantment") {
+			const auto* enchantable = a_form->As<RE::TESEnchantableForm>();
+			if (enchantable && enchantable->formEnchanting) {
+				return PushForm(a_state, enchantable->formEnchanting);
+			}
+			lua_pushnil(a_state);
+			return 1;
+		}
+		if (a_key == "keywords") {
+			const auto* keywordForm = a_form->As<RE::BGSKeywordForm>();
+			if (!keywordForm) {
+				lua_createtable(a_state, 0, 0);
+				return 1;
+			}
+			lua_createtable(a_state, keywordForm->numKeywords, 0);
+			lua_Integer index = 1;
+			for (std::uint32_t i = 0; i < keywordForm->numKeywords; ++i) {
+				PushForm(a_state, keywordForm->keywords[i]);
+				lua_rawseti(a_state, -2, index++);
+			}
+			return 1;
+		}
+		if (a_key == "hasKeyword") {
+			lua_pushcfunction(a_state, FormHasKeyword);
 			return 1;
 		}
 		return luaL_error(a_state, "unknown property '%s'", std::string(a_key).c_str());

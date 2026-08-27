@@ -82,6 +82,7 @@ else()
         src/ScriptLoader.cpp
         src/LuaApi.cpp
         src/LeveledList.cpp
+        src/Equipment.cpp
         "${CMAKE_CURRENT_BINARY_DIR}/src/version.rc"
         USE_ADDRESS_LIBRARY)
 
@@ -166,11 +167,6 @@ else()
         FILES "$<TARGET_PDB_FILE:${PROJECT_NAME}>"
         DESTINATION "${DEPLOY_DIR}/SKSE/Plugins"
         OPTIONAL)
-
-    # Example Lua scripts (inert without a matching marker plugin)
-    install(
-        FILES examples/LeveledLists.lua
-        DESTINATION "${DEPLOY_DIR}/SKSE/Plugins/LuaPatcher/Scripts")
 
     # `cmake --build --preset deploy`  (or  cmake --workflow --preset deploy)
     add_custom_target(

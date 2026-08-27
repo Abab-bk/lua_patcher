@@ -8,8 +8,8 @@
 # so it resolves Windows SDK / MSVC headers correctly.
 
 CompileFlags:
-  Add:
-    - "--target=x86_64-pc-windows-msvc"
+    Add:
+        - "--target=x86_64-pc-windows-msvc"
 
 Diagnostics:
-  UnusedIncludes: Strict
+    UnusedIncludes: Strict

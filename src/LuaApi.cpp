@@ -196,15 +196,15 @@ namespace
 	// Security: name must be a plain file name, no path separators or "..".
 	int TryLoadConfig(lua_State* a_state)
 	{
-		const char* raw = luaL_checkstring(a_state, 1);
+		const char*      raw = luaL_checkstring(a_state, 1);
 		std::string_view name(raw);
 		if (name.empty()) {
 			return luaL_argerror(a_state, 1, "config name must be non-empty");
 		}
 		if (name.find("..") != std::string_view::npos ||
-		    name.find('/') != std::string_view::npos ||
-		    name.find('\\') != std::string_view::npos ||
-		    name.find(':') != std::string_view::npos) {
+			name.find('/') != std::string_view::npos ||
+			name.find('\\') != std::string_view::npos ||
+			name.find(':') != std::string_view::npos) {
 			return luaL_argerror(a_state, 1, "config name must be a plain file name without path separators or '..'");
 		}
 
@@ -215,7 +215,7 @@ namespace
 
 		namespace fs = std::filesystem;
 		const fs::path configDir = "Data/SKSE/Plugins/LuaPatcher/Config";
-		fs::path file = configDir / (baseName + ".lua");
+		fs::path       file = configDir / (baseName + ".lua");
 		// Support <ModName>_Config.lua naming convention inside Config/ as well
 		// (e.g. user kept EquipmentInjection_Config.lua without renaming).
 		if (!fs::exists(file)) {
@@ -224,7 +224,7 @@ namespace
 				file = alt;
 			} else {
 				logger::info("LuaPatcher: config '{}' not found at '{}' nor '{}', using defaults", baseName,
-				             file.generic_string(), alt.generic_string());
+					file.generic_string(), alt.generic_string());
 				lua_pushnil(a_state);
 				return 1;
 			}

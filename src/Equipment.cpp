@@ -176,14 +176,16 @@ namespace
 
 	int WeaponNewIndex(lua_State* a_state)
 	{
-		auto* form = ToWeaponForm(a_state, 1);
-		auto* weap = form->As<RE::TESObjectWEAP>();
+		auto*       form = ToWeaponForm(a_state, 1);
+		auto*       weap = form->As<RE::TESObjectWEAP>();
 		const char* key = luaL_checkstring(a_state, 2);
 
 		if (std::strcmp(key, "damage") == 0) {
 			auto v = luaL_checkinteger(a_state, 3);
-			if (v < 0) v = 0;
-			if (v > 0xFFFF) v = 0xFFFF;
+			if (v < 0)
+				v = 0;
+			if (v > 0xFFFF)
+				v = 0xFFFF;
 			weap->attackDamage = static_cast<std::uint16_t>(v);
 			return 0;
 		}
@@ -204,8 +206,10 @@ namespace
 		}
 		if (std::strcmp(key, "critDamage") == 0) {
 			auto v = luaL_checkinteger(a_state, 3);
-			if (v < 0) v = 0;
-			if (v > 0xFFFF) v = 0xFFFF;
+			if (v < 0)
+				v = 0;
+			if (v > 0xFFFF)
+				v = 0xFFFF;
 			weap->criticalData.damage = static_cast<std::uint16_t>(v);
 			return 0;
 		}
@@ -216,7 +220,8 @@ namespace
 		}
 		if (std::strcmp(key, "value") == 0) {
 			auto v = luaL_checkinteger(a_state, 3);
-			if (v < 0) v = 0;
+			if (v < 0)
+				v = 0;
 			weap->value = static_cast<std::uint32_t>(v);
 			return 0;
 		}
@@ -354,13 +359,14 @@ namespace
 
 	int ArmorNewIndex(lua_State* a_state)
 	{
-		auto* form = ToArmorForm(a_state, 1);
-		auto* armor = form->As<RE::TESObjectARMO>();
+		auto*       form = ToArmorForm(a_state, 1);
+		auto*       armor = form->As<RE::TESObjectARMO>();
 		const char* key = luaL_checkstring(a_state, 2);
 
 		if (std::strcmp(key, "armorRating") == 0) {
 			double v = luaL_checknumber(a_state, 3);
-			if (v < 0) v = 0;
+			if (v < 0)
+				v = 0;
 			armor->armorRating = static_cast<std::uint32_t>(v * 100.0 + 0.5);
 			return 0;
 		}
@@ -371,7 +377,8 @@ namespace
 		}
 		if (std::strcmp(key, "value") == 0) {
 			auto v = luaL_checkinteger(a_state, 3);
-			if (v < 0) v = 0;
+			if (v < 0)
+				v = 0;
 			armor->value = static_cast<std::uint32_t>(v);
 			return 0;
 		}

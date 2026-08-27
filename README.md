@@ -9,6 +9,7 @@ Credits:
 
 - [CommonLibSSE-NG](https://github.com/alandtse/CommonLibVR/tree/ng)
 - [SkyPatcher](https://github.com/Zzyxz/SkyPatcher)
+- [CommonLibSSE-NG-template](https://github.com/codepuncher/CommonLibSSE-NG-template)
 
 ## Development
 

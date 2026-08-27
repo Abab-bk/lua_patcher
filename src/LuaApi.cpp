@@ -9,6 +9,8 @@
 #include <RE/T/TESWeightForm.h>
 
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -188,6 +190,79 @@ namespace
 		lua_pushboolean(a_state, installed);
 		return 1;
 	}
+
+	// Whitelisted config loader: only Data/SKSE/Plugins/LuaPatcher/Config/<name>.lua
+	// Returns the chunk's return value (usually a table) or nil on miss/error.
+	// Security: name must be a plain file name, no path separators or "..".
+	int TryLoadConfig(lua_State* a_state)
+	{
+		const char* raw = luaL_checkstring(a_state, 1);
+		std::string_view name(raw);
+		if (name.empty()) {
+			return luaL_argerror(a_state, 1, "config name must be non-empty");
+		}
+		if (name.find("..") != std::string_view::npos ||
+		    name.find('/') != std::string_view::npos ||
+		    name.find('\\') != std::string_view::npos ||
+		    name.find(':') != std::string_view::npos) {
+			return luaL_argerror(a_state, 1, "config name must be a plain file name without path separators or '..'");
+		}
+
+		std::string baseName(name);
+		if (baseName.size() > 4 && baseName.substr(baseName.size() - 4) == ".lua") {
+			baseName = baseName.substr(0, baseName.size() - 4);
+		}
+
+		namespace fs = std::filesystem;
+		const fs::path configDir = "Data/SKSE/Plugins/LuaPatcher/Config";
+		fs::path file = configDir / (baseName + ".lua");
+		// Support <ModName>_Config.lua naming convention inside Config/ as well
+		// (e.g. user kept EquipmentInjection_Config.lua without renaming).
+		if (!fs::exists(file)) {
+			fs::path alt = configDir / (baseName + "_Config.lua");
+			if (fs::exists(alt)) {
+				file = alt;
+			} else {
+				logger::info("LuaPatcher: config '{}' not found at '{}' nor '{}', using defaults", baseName,
+				             file.generic_string(), alt.generic_string());
+				lua_pushnil(a_state);
+				return 1;
+			}
+		}
+
+		std::ifstream in(file, std::ios::binary);
+		if (!in) {
+			logger::warn("LuaPatcher: config '{}' found but could not be opened: {}", baseName, file.generic_string());
+			lua_pushnil(a_state);
+			return 1;
+		}
+		std::string contents((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+		if (contents.empty()) {
+			logger::warn("LuaPatcher: config '{}' is empty: {}", baseName, file.generic_string());
+			lua_pushnil(a_state);
+			return 1;
+		}
+
+		std::string chunkName = "@" + file.generic_string();
+		if (luaL_loadbufferx(a_state, contents.data(), contents.size(), chunkName.c_str(), nullptr) != LUA_OK) {
+			logger::error("LuaPatcher: failed to load config '{}': {}", file.generic_string(), lua_tostring(a_state, -1));
+			lua_pop(a_state, 1);
+			lua_pushnil(a_state);
+			return 1;
+		}
+
+		if (lua_pcall(a_state, 0, 1, 0) != LUA_OK) {
+			logger::error("LuaPatcher: config '{}' failed: {}", file.generic_string(), lua_tostring(a_state, -1));
+			lua_pop(a_state, 1);
+			lua_pushnil(a_state);
+			return 1;
+		}
+
+		// Stack now has the config's return value (table or nil). Return it as-is.
+		// If the chunk returned nothing, lua_pcall with 1 result already pushed nil.
+		logger::info("LuaPatcher: loaded config '{}' from '{}'", baseName, file.generic_string());
+		return 1;
+	}
 }
 
 namespace LuaPatcher
@@ -277,6 +352,8 @@ namespace LuaPatcher
 			{ "error", Error },
 			{ "getForm", GetForm },
 			{ "isPluginInstalled", IsPluginInstalled },
+			{ "tryLoadConfig", TryLoadConfig },
+			{ "loadConfig", TryLoadConfig },
 			{ nullptr, nullptr },
 		};
 		luaL_setfuncs(a_state, functions, 0);

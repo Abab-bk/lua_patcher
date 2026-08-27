@@ -3,8 +3,10 @@
 Requires: pip install invoke
 
 Usage:
-    invoke deploy                     build + deploy the DLL only
-    invoke deploy --copy-example      also (re)copy the default EquipmentInjection.lua
+    invoke deploy                          build + deploy the DLL only
+    invoke deploy --copy-example           also copy default example (EquipmentInjection)
+    invoke deploy --copy-all-examples      also copy every distributable example
+    invoke deploy --example NAME           choose which single example to copy (default: EquipmentInjection)
 """
 
 from __future__ import annotations
@@ -21,11 +23,19 @@ ROOT = Path(__file__).resolve().parent
 # Deployed mod layout: <SKYRIM_MODS_FOLDER>/LuaPatcher/SKSE/Plugins/
 MOD_FOLDER_NAME = "LuaPatcher"
 SCRIPTS_RELATIVE = Path("SKSE/Plugins/LuaPatcher/Scripts")
-DEFAULT_EQUIPMENT_SCRIPT = ROOT / "examples" / "EquipmentInjection.lua"
+CONFIG_RELATIVE = Path("SKSE/Plugins/LuaPatcher/Config")
+
+# Layout:
+#   examples/
+#     EquipmentInjection/
+#       EquipmentInjection.lua
+#       EquipmentInjection_Config.lua
+#     snippets/   -> NOT distributable, reference only
+EXAMPLES_ROOT = ROOT / "examples"
+DEFAULT_EXAMPLE = "EquipmentInjection"
 
 
 def _load_env() -> None:
-    """Source .env into the process environment (mirrors deploy.sh)."""
     env_file = ROOT / ".env"
     if not env_file.is_file():
         return
@@ -51,16 +61,78 @@ def _mods_folder(c: Context) -> str:
     return mods_folder
 
 
+def _is_distributable(p: Path) -> bool:
+    return p.is_dir() and p.name != "snippets" and not p.name.startswith(".")  # only snippets is excluded
+
+
+def _find_example_script(name: str) -> Path | None:
+    cand = EXAMPLES_ROOT / name / f"{name}.lua"
+    if cand.is_file():
+        return cand
+    dir_ = EXAMPLES_ROOT / name
+    if dir_.is_dir():
+        luas = sorted(dir_.glob("*.lua"))
+        # prefer non-config lua
+        for f in luas:
+            if not f.name.endswith("_Config.lua"):
+                return f
+        if luas:
+            return luas[0]
+    legacy = EXAMPLES_ROOT / f"{name}.lua"
+    if legacy.is_file():
+        return legacy
+    for p in EXAMPLES_ROOT.rglob(f"{name}.lua"):
+        if p.is_file():
+            return p
+    return None
+
+
+def _find_example_config(name: str) -> Path | None:
+    for cand in [
+        EXAMPLES_ROOT / name / f"{name}_Config.lua",
+        EXAMPLES_ROOT / name / "Config.lua",
+    ]:
+        if cand.is_file():
+            return cand
+    return None
+
+
+def _copy_single_example(example: str, mods_folder: str) -> None:
+    if example == "snippets":
+        raise Exit("snippets is not a distributable example")
+
+    src = _find_example_script(example)
+    if not src or not src.is_file():
+        raise Exit(f"Example script for '{example}' not found. Looked in examples/{example}/")
+
+    scripts_dir = Path(mods_folder) / MOD_FOLDER_NAME / SCRIPTS_RELATIVE
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    dst = scripts_dir / src.name
+    shutil.copy2(src, dst)
+    print(f"Copied example '{example}' -> {dst}")
+
+    cfg_src = _find_example_config(example)
+    if cfg_src:
+        cfg_dir = Path(mods_folder) / MOD_FOLDER_NAME / CONFIG_RELATIVE
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        # repo: <Name>_Config.lua -> deployed: <Name>.lua (what tryLoadConfig expects)
+        cfg_dst = cfg_dir / f"{example}.lua"
+        shutil.copy2(cfg_src, cfg_dst)
+        print(f"Copied config {cfg_src.name} -> {cfg_dst}")
+
+
 @task
-def deploy(c: Context, copy_example: bool = False):
-    """Build and deploy the mod to your mod manager's staging folder.
+def deploy(
+    c: Context,
+    copy_example: bool = False,
+    copy_all_examples: bool = False,
+    example: str = DEFAULT_EXAMPLE,
+):
+    """Build and deploy the mod.
 
-    Requires SKYRIM_MODS_FOLDER to be set in .env or the environment.
-
-    With --copy-example, the default examples/EquipmentInjection.lua is
-    (re)copied into the deployed mod's Scripts folder, overwriting any
-    existing copy there. Without the flag the Scripts folder is left alone,
-    so scripts you have customized in the mod folder are never clobbered.
+    With --copy-example copy a single example (default: EquipmentInjection,
+    use --example NAME to choose).
+    With --copy-all-examples copy every distributable example in examples/.
     """
     mods_folder = _mods_folder(c)
 
@@ -68,11 +140,18 @@ def deploy(c: Context, copy_example: bool = False):
     with c.cd(str(ROOT)):
         c.run("cmake --workflow --preset deploy", echo=True)
 
+    if copy_all_examples:
+        copied = 0
+        for p in sorted(EXAMPLES_ROOT.iterdir()):
+            if _is_distributable(p):
+                _copy_single_example(p.name, mods_folder)
+                copied += 1
+        if copied == 0:
+            print("No distributable examples found in examples/")
+        print("\nDeploy complete")
+        return
+
     if copy_example:
-        scripts_dir = Path(mods_folder) / MOD_FOLDER_NAME / SCRIPTS_RELATIVE
-        scripts_dir.mkdir(parents=True, exist_ok=True)
-        destination = scripts_dir / DEFAULT_EQUIPMENT_SCRIPT.name
-        shutil.copy2(DEFAULT_EQUIPMENT_SCRIPT, destination)
-        print(f"Copied default example to: {destination}")
+        _copy_single_example(example, mods_folder)
 
     print("\nDeploy complete")

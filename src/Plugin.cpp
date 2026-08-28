@@ -10,10 +10,10 @@ void SetupLog()
 	}
 
 	const auto* plugin = SKSE::PluginDeclaration::GetSingleton();
-	const auto  logName = plugin ? std::string{ plugin->GetName() } + ".log" : "Plugin.log";
-	auto        logPath = *logsFolder / logName;
+	const auto logName = plugin ? std::string{ plugin->GetName() } + ".log" : "Plugin.log";
+	auto logPath = *logsFolder / logName;
 
-	auto                          fileSink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(logPath.string(), true);
+	auto fileSink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(logPath.string(), true);
 	std::vector<spdlog::sink_ptr> sinks{ fileSink };
 	if (IsDebuggerPresent()) {
 		sinks.push_back(std::make_shared<spdlog::sinks::msvc_sink_mt>());
@@ -37,7 +37,7 @@ void OnDataLoaded()
 	LuaPatcher::RunScripts();
 
 	const auto* plugin = SKSE::PluginDeclaration::GetSingleton();
-	const auto  name = plugin ? plugin->GetName() : "Plugin";
+	const auto name = plugin ? plugin->GetName() : "Plugin";
 
 	if (auto* const console = RE::ConsoleLog::GetSingleton()) {
 		console->Print("[%s] Loaded successfully!", std::string(name).c_str());
@@ -62,16 +62,15 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 		return false;
 	}
 
-	if (!messaging->RegisterListener(
-			[](SKSE::MessagingInterface::Message* a_msg) {
-				switch (a_msg->type) {
-				case SKSE::MessagingInterface::kDataLoaded:
-					OnDataLoaded();
-					break;
-				default:
-					break;
-				}
-			})) {
+	if (!messaging->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
+			switch (a_msg->type) {
+			case SKSE::MessagingInterface::kDataLoaded:
+				OnDataLoaded();
+				break;
+			default:
+				break;
+			}
+		})) {
 		logger::error("Failed to register messaging listener");
 		return false;
 	}

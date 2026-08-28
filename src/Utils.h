@@ -29,7 +29,7 @@ namespace ExampleMod
 		return s.substr(first, s.find_last_not_of(" \t\r\n") - first + 1);
 	}
 
-	[[nodiscard]] inline constexpr unsigned char AsciiToLower(unsigned char c) noexcept
+	[[nodiscard]] constexpr unsigned char AsciiToLower(unsigned char c) noexcept
 	{
 		return (c >= 'A' && c <= 'Z') ? static_cast<unsigned char>(c + ('a' - 'A')) : c;
 	}
@@ -37,8 +37,7 @@ namespace ExampleMod
 	// Case-insensitive ASCII string comparison (useful for config keys/values).
 	[[nodiscard]] inline bool CaseInsensitiveEqual(std::string_view a, std::string_view b)
 	{
-		return std::ranges::equal(
-			a, b,
+		return std::ranges::equal(a, b,
 			[](unsigned char x, unsigned char y) { return AsciiToLower(x) == AsciiToLower(y); });
 	}
 

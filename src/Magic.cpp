@@ -1,7 +1,5 @@
 #include "LuaApi.h"
 
-#include "PCH.h"
-
 #include <RE/E/EffectSetting.h>
 #include <RE/S/SpellItem.h>
 
@@ -265,54 +263,198 @@ namespace
 		return result;
 	}
 
-	sol::object AllSpells(sol::this_state a_state)
-	{
-		return PushFormArray<RE::SpellItem>(a_state);
-	}
+	sol::object AllSpells(sol::this_state a_state) { return PushFormArray<RE::SpellItem>(a_state); }
 
-	sol::object AllMagicEffects(sol::this_state a_state)
-	{
-		return PushFormArray<RE::EffectSetting>(a_state);
-	}
+	sol::object AllMagicEffects(sol::this_state a_state) { return PushFormArray<RE::EffectSetting>(a_state); }
 }
 
 namespace LuaPatcher
 {
-	void RegisterMagic(sol::state_view a_lua)
+	void RegisterMagic(sol::state_view& a_lua)
 	{
-		a_lua.new_usertype<LuaSpell>("Spell", sol::base_classes, sol::bases<LuaForm>(), sol::meta_function::index, sol::readonly_property(UnknownPropertyGetter<LuaSpell>), sol::meta_function::to_string, [](const LuaSpell& a_form) { return fmt::format("Spell[{:08X}]", a_form.form->GetFormID()); }, "costOverride", sol::property([](const LuaSpell& a_form) { return static_cast<lua_Integer>(a_form.form->As<RE::SpellItem>()->data.costOverride); }, [](LuaSpell& a_form, lua_Integer a_value) { a_form.form->As<RE::SpellItem>()->data.costOverride = static_cast<std::int32_t>(a_value); }), "spellType", sol::property([](const LuaSpell& a_form) { return std::string(SpellTypeName(a_form.form->As<RE::SpellItem>()->data.spellType)); }, [](LuaSpell& a_form, std::string a_value) {
+		a_lua.new_usertype<LuaSpell>(
+			"Spell", sol::base_classes, sol::bases<LuaForm>(), sol::meta_function::index,
+			sol::readonly_property(UnknownPropertyGetter<LuaSpell>), sol::meta_function::to_string,
+			[](const LuaSpell& a_form) { return fmt::format("Spell[{:08X}]", a_form.form->GetFormID()); },
+			"costOverride",
+			sol::property(
+				[](const LuaSpell& a_form) {
+					return static_cast<lua_Integer>(a_form.form->As<RE::SpellItem>()->data.costOverride);
+				},
+				[](LuaSpell& a_form, lua_Integer a_value) {
+					a_form.form->As<RE::SpellItem>()->data.costOverride = static_cast<std::int32_t>(a_value);
+				}),
+			"spellType",
+			sol::property(
+				[](const LuaSpell& a_form) {
+					return std::string(SpellTypeName(a_form.form->As<RE::SpellItem>()->data.spellType));
+				},
+				[](LuaSpell& a_form, const std::string& a_value) {
 					RE::MagicSystem::SpellType type;
 					if (!TryParseSpellType(a_value, type)) {
 						throw sol::error{ "invalid spellType (Spell/Disease/Power/LesserPower/Ability/Poison)" };
 					}
-					a_form.form->As<RE::SpellItem>()->data.spellType = type; }), "castingType", sol::property([](const LuaSpell& a_form) { return std::string(CastingTypeName(a_form.form->As<RE::SpellItem>()->data.castingType)); }, [](LuaSpell& a_form, std::string a_value) {
+					a_form.form->As<RE::SpellItem>()->data.spellType = type;
+				}),
+			"castingType",
+			sol::property(
+				[](const LuaSpell& a_form) {
+					return std::string(CastingTypeName(a_form.form->As<RE::SpellItem>()->data.castingType));
+				},
+				[](LuaSpell& a_form, const std::string& a_value) {
 					RE::MagicSystem::CastingType type;
 					if (!TryParseCastingType(a_value, type)) {
 						throw sol::error{ "invalid castingType" };
 					}
-					a_form.form->As<RE::SpellItem>()->data.castingType = type; }), "delivery", sol::property([](const LuaSpell& a_form) { return std::string(DeliveryName(a_form.form->As<RE::SpellItem>()->data.delivery)); }, [](LuaSpell& a_form, std::string a_value) {
+					a_form.form->As<RE::SpellItem>()->data.castingType = type;
+				}),
+			"delivery",
+			sol::property(
+				[](const LuaSpell& a_form) {
+					return std::string(DeliveryName(a_form.form->As<RE::SpellItem>()->data.delivery));
+				},
+				[](LuaSpell& a_form, const std::string& a_value) {
 					RE::MagicSystem::Delivery delivery;
 					if (!TryParseDelivery(a_value, delivery)) {
 						throw sol::error{ "invalid delivery" };
 					}
-					a_form.form->As<RE::SpellItem>()->data.delivery = delivery; }), "chargeTime", sol::property([](const LuaSpell& a_form) { return a_form.form->As<RE::SpellItem>()->data.chargeTime; }, [](LuaSpell& a_form, double a_value) { a_form.form->As<RE::SpellItem>()->data.chargeTime = static_cast<float>(a_value); }), "castDuration", sol::property([](const LuaSpell& a_form) { return a_form.form->As<RE::SpellItem>()->data.castDuration; }, [](LuaSpell& a_form, double a_value) { a_form.form->As<RE::SpellItem>()->data.castDuration = static_cast<float>(a_value); }), "range", sol::property([](const LuaSpell& a_form) { return a_form.form->As<RE::SpellItem>()->data.range; }, [](LuaSpell& a_form, double a_value) { a_form.form->As<RE::SpellItem>()->data.range = static_cast<float>(a_value); }), "addKeyword", [](LuaSpell& a_form, sol::object a_keyword) { return a_form.form->As<RE::SpellItem>()->AddKeyword(CheckKeyword(a_keyword)); }, "removeKeyword", [](LuaSpell& a_form, sol::object a_keyword) { return a_form.form->As<RE::SpellItem>()->RemoveKeyword(CheckKeyword(a_keyword)); });
+					a_form.form->As<RE::SpellItem>()->data.delivery = delivery;
+				}),
+			"chargeTime",
+			sol::property([](const LuaSpell& a_form) { return a_form.form->As<RE::SpellItem>()->data.chargeTime; },
+				[](LuaSpell& a_form, double a_value) {
+					a_form.form->As<RE::SpellItem>()->data.chargeTime = static_cast<float>(a_value);
+				}),
+			"castDuration",
+			sol::property([](const LuaSpell& a_form) { return a_form.form->As<RE::SpellItem>()->data.castDuration; },
+				[](LuaSpell& a_form, double a_value) {
+					a_form.form->As<RE::SpellItem>()->data.castDuration = static_cast<float>(a_value);
+				}),
+			"range",
+			sol::property([](const LuaSpell& a_form) { return a_form.form->As<RE::SpellItem>()->data.range; },
+				[](LuaSpell& a_form, double a_value) {
+					a_form.form->As<RE::SpellItem>()->data.range = static_cast<float>(a_value);
+				}),
+			"addKeyword",
+			[](LuaSpell& a_form, sol::object a_keyword) {
+				return a_form.form->As<RE::SpellItem>()->AddKeyword(CheckKeyword(a_keyword));
+			},
+			"removeKeyword",
+			[](LuaSpell& a_form, sol::object a_keyword) {
+				return a_form.form->As<RE::SpellItem>()->RemoveKeyword(CheckKeyword(a_keyword));
+			});
 
-		a_lua.new_usertype<LuaMagicEffect>("MagicEffect", sol::base_classes, sol::bases<LuaForm>(), sol::meta_function::index, sol::readonly_property(UnknownPropertyGetter<LuaMagicEffect>), sol::meta_function::to_string, [](const LuaMagicEffect& a_form) { return fmt::format("MagicEffect[{:08X}]", a_form.form->GetFormID()); }, "baseCost", sol::property([](const LuaMagicEffect& a_form) { return a_form.form->As<RE::EffectSetting>()->data.baseCost; }, [](LuaMagicEffect& a_form, double a_value) { a_form.form->As<RE::EffectSetting>()->data.baseCost = static_cast<float>(a_value); }), "minimumSkill", sol::property([](const LuaMagicEffect& a_form) { return static_cast<lua_Integer>(a_form.form->As<RE::EffectSetting>()->data.minimumSkill); }, [](LuaMagicEffect& a_form, lua_Integer a_value) { a_form.form->As<RE::EffectSetting>()->data.minimumSkill = static_cast<std::int32_t>(a_value); }), "spellmakingArea", sol::property([](const LuaMagicEffect& a_form) { return static_cast<lua_Integer>(a_form.form->As<RE::EffectSetting>()->data.spellmakingArea); }, [](LuaMagicEffect& a_form, lua_Integer a_value) { a_form.form->As<RE::EffectSetting>()->data.spellmakingArea = static_cast<std::int32_t>(a_value); }), "spellmakingChargeTime", sol::property([](const LuaMagicEffect& a_form) { return a_form.form->As<RE::EffectSetting>()->data.spellmakingChargeTime; }, [](LuaMagicEffect& a_form, double a_value) { a_form.form->As<RE::EffectSetting>()->data.spellmakingChargeTime = static_cast<float>(a_value); }), "taperWeight", sol::property([](const LuaMagicEffect& a_form) { return a_form.form->As<RE::EffectSetting>()->data.taperWeight; }, [](LuaMagicEffect& a_form, double a_value) { a_form.form->As<RE::EffectSetting>()->data.taperWeight = static_cast<float>(a_value); }), "taperCurve", sol::property([](const LuaMagicEffect& a_form) { return a_form.form->As<RE::EffectSetting>()->data.taperCurve; }, [](LuaMagicEffect& a_form, double a_value) { a_form.form->As<RE::EffectSetting>()->data.taperCurve = static_cast<float>(a_value); }), "skillUsageMult", sol::property([](const LuaMagicEffect& a_form) { return a_form.form->As<RE::EffectSetting>()->data.skillUsageMult; }, [](LuaMagicEffect& a_form, double a_value) { a_form.form->As<RE::EffectSetting>()->data.skillUsageMult = static_cast<float>(a_value); }), "associatedSkill", sol::property([](const LuaMagicEffect& a_form) { return std::string(ActorValueName(a_form.form->As<RE::EffectSetting>()->data.associatedSkill)); }, [](LuaMagicEffect& a_form, std::string a_value) {
+		a_lua.new_usertype<LuaMagicEffect>(
+			"MagicEffect", sol::base_classes, sol::bases<LuaForm>(), sol::meta_function::index,
+			sol::readonly_property(UnknownPropertyGetter<LuaMagicEffect>), sol::meta_function::to_string,
+			[](const LuaMagicEffect& a_form) { return fmt::format("MagicEffect[{:08X}]", a_form.form->GetFormID()); },
+			"baseCost",
+			sol::property(
+				[](const LuaMagicEffect& a_form) { return a_form.form->As<RE::EffectSetting>()->data.baseCost; },
+				[](LuaMagicEffect& a_form, double a_value) {
+					a_form.form->As<RE::EffectSetting>()->data.baseCost = static_cast<float>(a_value);
+				}),
+			"minimumSkill",
+			sol::property(
+				[](const LuaMagicEffect& a_form) {
+					return static_cast<lua_Integer>(a_form.form->As<RE::EffectSetting>()->data.minimumSkill);
+				},
+				[](LuaMagicEffect& a_form, lua_Integer a_value) {
+					a_form.form->As<RE::EffectSetting>()->data.minimumSkill = static_cast<std::int32_t>(a_value);
+				}),
+			"spellmakingArea",
+			sol::property(
+				[](const LuaMagicEffect& a_form) {
+					return static_cast<lua_Integer>(a_form.form->As<RE::EffectSetting>()->data.spellmakingArea);
+				},
+				[](LuaMagicEffect& a_form, lua_Integer a_value) {
+					a_form.form->As<RE::EffectSetting>()->data.spellmakingArea = static_cast<std::int32_t>(a_value);
+				}),
+			"spellmakingChargeTime",
+			sol::property(
+				[](const LuaMagicEffect& a_form) {
+					return a_form.form->As<RE::EffectSetting>()->data.spellmakingChargeTime;
+				},
+				[](LuaMagicEffect& a_form, double a_value) {
+					a_form.form->As<RE::EffectSetting>()->data.spellmakingChargeTime = static_cast<float>(a_value);
+				}),
+			"taperWeight",
+			sol::property(
+				[](const LuaMagicEffect& a_form) { return a_form.form->As<RE::EffectSetting>()->data.taperWeight; },
+				[](LuaMagicEffect& a_form, double a_value) {
+					a_form.form->As<RE::EffectSetting>()->data.taperWeight = static_cast<float>(a_value);
+				}),
+			"taperCurve",
+			sol::property(
+				[](const LuaMagicEffect& a_form) { return a_form.form->As<RE::EffectSetting>()->data.taperCurve; },
+				[](LuaMagicEffect& a_form, double a_value) {
+					a_form.form->As<RE::EffectSetting>()->data.taperCurve = static_cast<float>(a_value);
+				}),
+			"skillUsageMult",
+			sol::property(
+				[](const LuaMagicEffect& a_form) { return a_form.form->As<RE::EffectSetting>()->data.skillUsageMult; },
+				[](LuaMagicEffect& a_form, double a_value) {
+					a_form.form->As<RE::EffectSetting>()->data.skillUsageMult = static_cast<float>(a_value);
+				}),
+			"associatedSkill",
+			sol::property(
+				[](const LuaMagicEffect& a_form) {
+					return std::string(ActorValueName(a_form.form->As<RE::EffectSetting>()->data.associatedSkill));
+				},
+				[](LuaMagicEffect& a_form, std::string a_value) {
 					RE::ActorValue actorValue;
 					if (!TryParseActorValue(a_value, actorValue)) {
-						throw sol::error{ "invalid ActorValue (Alteration/Conjuration/Destruction/Illusion/Restoration/Enchanting/None)" };
+						throw sol::error{
+							"invalid ActorValue "
+							"(Alteration/Conjuration/Destruction/Illusion/Restoration/Enchanting/None)"
+						};
 					}
-					a_form.form->As<RE::EffectSetting>()->data.associatedSkill = actorValue; }), "resistVariable", sol::property([](const LuaMagicEffect& a_form) { return std::string(ActorValueName(a_form.form->As<RE::EffectSetting>()->data.resistVariable)); }), "castingType", sol::property([](const LuaMagicEffect& a_form) { return std::string(CastingTypeName(a_form.form->As<RE::EffectSetting>()->data.castingType)); }, [](LuaMagicEffect& a_form, std::string a_value) {
+					a_form.form->As<RE::EffectSetting>()->data.associatedSkill = actorValue;
+				}),
+			"resistVariable", sol::property([](const LuaMagicEffect& a_form) {
+				return std::string(ActorValueName(a_form.form->As<RE::EffectSetting>()->data.resistVariable));
+			}),
+			"castingType",
+			sol::property(
+				[](const LuaMagicEffect& a_form) {
+					return std::string(CastingTypeName(a_form.form->As<RE::EffectSetting>()->data.castingType));
+				},
+				[](LuaMagicEffect& a_form, std::string a_value) {
 					RE::MagicSystem::CastingType type;
 					if (!TryParseCastingType(a_value, type)) {
 						throw sol::error{ "invalid castingType" };
 					}
-					a_form.form->As<RE::EffectSetting>()->data.castingType = type; }), "delivery", sol::property([](const LuaMagicEffect& a_form) { return std::string(DeliveryName(a_form.form->As<RE::EffectSetting>()->data.delivery)); }, [](LuaMagicEffect& a_form, std::string a_value) {
+					a_form.form->As<RE::EffectSetting>()->data.castingType = type;
+				}),
+			"delivery",
+			sol::property(
+				[](const LuaMagicEffect& a_form) {
+					return std::string(DeliveryName(a_form.form->As<RE::EffectSetting>()->data.delivery));
+				},
+				[](LuaMagicEffect& a_form, std::string a_value) {
 					RE::MagicSystem::Delivery delivery;
 					if (!TryParseDelivery(a_value, delivery)) {
 						throw sol::error{ "invalid delivery" };
 					}
-					a_form.form->As<RE::EffectSetting>()->data.delivery = delivery; }), "archetype", sol::property([](const LuaMagicEffect& a_form) { return std::string(ArchetypeName(a_form.form->As<RE::EffectSetting>()->data.archetype)); }), "isHostile", sol::property([](const LuaMagicEffect& a_form) { return a_form.form->As<RE::EffectSetting>()->IsHostile(); }), "isDetrimental", sol::property([](const LuaMagicEffect& a_form) { return a_form.form->As<RE::EffectSetting>()->IsDetrimental(); }), "addKeyword", [](LuaMagicEffect& a_form, sol::object a_keyword) { return a_form.form->As<RE::EffectSetting>()->AddKeyword(CheckKeyword(a_keyword)); }, "removeKeyword", [](LuaMagicEffect& a_form, sol::object a_keyword) { return a_form.form->As<RE::EffectSetting>()->RemoveKeyword(CheckKeyword(a_keyword)); });
+					a_form.form->As<RE::EffectSetting>()->data.delivery = delivery;
+				}),
+			"archetype", sol::property([](const LuaMagicEffect& a_form) {
+				return std::string(ArchetypeName(a_form.form->As<RE::EffectSetting>()->data.archetype));
+			}),
+			"isHostile", sol::property([](const LuaMagicEffect& a_form) {
+				return a_form.form->As<RE::EffectSetting>()->IsHostile();
+			}),
+			"isDetrimental", sol::property([](const LuaMagicEffect& a_form) {
+				return a_form.form->As<RE::EffectSetting>()->IsDetrimental();
+			}),
+			"addKeyword",
+			[](LuaMagicEffect& a_form, sol::object a_keyword) {
+				return a_form.form->As<RE::EffectSetting>()->AddKeyword(CheckKeyword(a_keyword));
+			},
+			"removeKeyword",
+			[](LuaMagicEffect& a_form, sol::object a_keyword) {
+				return a_form.form->As<RE::EffectSetting>()->RemoveKeyword(CheckKeyword(a_keyword));
+			});
 
 		sol::table patcher = a_lua["lua_patcher"].get<sol::table>();
 		patcher["allSpells"] = &AllSpells;

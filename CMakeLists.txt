@@ -107,6 +107,10 @@ else()
 
     target_link_libraries(${PROJECT_NAME} PRIVATE sol2::sol2 unofficial::lua::lua)
 
+    # sol2's argument type checks default to OFF in release builds (NDEBUG); force
+    # them on so Lua type errors are caught consistently in every configuration.
+    target_compile_definitions(${PROJECT_NAME} PRIVATE SOL_ALL_SAFETIES_ON=1)
+
     set_target_properties(
         ${PROJECT_NAME}
         PROPERTIES OUTPUT_NAME LuaPatcher

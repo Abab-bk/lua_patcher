@@ -1,11 +1,11 @@
 #include "ScriptLoader.h"
 
 #include "LuaApi.h"
-#include "PCH.h"
 
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <sol/state_view.hpp>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -30,13 +30,11 @@ namespace
 		return filename.ends_with("_config.lua");
 	}
 
-	void RunScript(sol::state_view a_lua, const std::filesystem::path& a_path)
+	void RunScript(sol::state_view& a_lua, const std::filesystem::path& a_path)
 	{
 		std::ifstream file(a_path, std::ios::binary);
 
-		auto contents = std::string(
-			std::istreambuf_iterator<char>{ file },
-			std::istreambuf_iterator<char>{});
+		auto contents = std::string(std::istreambuf_iterator<char>{ file }, std::istreambuf_iterator<char>{});
 
 		if (contents.empty()) {
 			logger::warn("LuaPatcher: script '{}' is empty", a_path.generic_string());
@@ -46,7 +44,8 @@ namespace
 		const auto chunkName = "@" + a_path.generic_string();
 
 		// sol2's protected call attaches a full stack traceback to the error message.
-		sol::protected_function_result result = a_lua.safe_script(contents, sol::script_pass_on_error, chunkName, sol::load_mode::any);
+		auto result = a_lua.safe_script(contents, sol::script_pass_on_error, chunkName, sol::load_mode::any);
+
 		if (!result.valid()) {
 			sol::error err = result;
 			logger::error("LuaPatcher: script '{}' failed: {}", a_path.generic_string(), err.what());
@@ -55,7 +54,7 @@ namespace
 
 	// Scripts are trusted config code, but the interpreter should not be able to
 	// touch the machine out of the box: strip file-system and process functions.
-	void RestrictLibraries(sol::state_view a_lua)
+	void RestrictLibraries(sol::state_view& a_lua)
 	{
 		a_lua["os"]["execute"] = sol::nil;
 		a_lua["os"]["exit"] = sol::nil;
@@ -69,7 +68,8 @@ namespace
 
 	// sol2 prints C++ exceptions to stderr before converting them to Lua errors;
 	// route that noise away (pcall'd script errors should only surface in the log).
-	int QuietExceptionHandler(lua_State* a_state, sol::optional<const std::exception&> a_exception, sol::string_view a_what)
+	int QuietExceptionHandler(lua_State* a_state, sol::optional<const std::exception&> a_exception,
+		sol::string_view a_what)
 	{
 		(void)a_exception;
 		lua_pushlstring(a_state, a_what.data(), a_what.size());
@@ -104,8 +104,8 @@ namespace LuaPatcher
 
 		sol::state lua;
 		lua.set_exception_handler(QuietExceptionHandler);
-		lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::coroutine, sol::lib::string,
-			sol::lib::os, sol::lib::math, sol::lib::table, sol::lib::utf8, sol::lib::io, sol::lib::debug);
+		lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::coroutine, sol::lib::string, sol::lib::os,
+			sol::lib::math, sol::lib::table, sol::lib::utf8, sol::lib::io, sol::lib::debug);
 
 		RestrictLibraries(lua);
 		RegisterApi(lua);

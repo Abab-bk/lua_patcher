@@ -2,20 +2,21 @@
 
 A SKSE plugin.
 
-LuaPatcher is similar to SkyPatcher, allowing you to patch Forms at runtime, but
-using Lua.
+LuaPatcher patches Skyrim SE/AE Forms at runtime, scripted in Lua. Leveled
+lists, weapons, armor, spells and magic effects can be read, filtered and
+rewritten with the full power of a scripting language.
 
 AI Disclosure: AI was used to code this mod.
 
 Credits:
 
 - [CommonLibSSE-NG](https://github.com/alandtse/CommonLibVR/tree/ng)
-- [SkyPatcher](https://github.com/Zzyxz/SkyPatcher)
 - [CommonLibSSE-NG-template](https://github.com/codepuncher/CommonLibSSE-NG-template)
 
 ## Docs
 
-Check examples/
+- [API Reference](docs/API.md)
+- [Examples](examples/)
 
 ## Development
 

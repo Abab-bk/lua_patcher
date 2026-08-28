@@ -1,7 +1,5 @@
 #include "LuaApi.h"
 
-#include "PCH.h"
-
 #include <RE/B/BGSKeywordForm.h>
 #include <RE/T/TESEnchantableForm.h>
 #include <RE/T/TESForm.h>
@@ -14,51 +12,10 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 namespace
 {
-	RE::TESForm* GetFormFromIdentifierCached(std::string_view a_identifier)
-	{
-		static std::unordered_map<std::string, RE::TESForm*> cache;
-
-		const std::string key(a_identifier);
-		if (const auto it = cache.find(key); it != cache.end()) {
-			return it->second;
-		}
-
-		auto* dataHandler = RE::TESDataHandler::GetSingleton();
-		if (!dataHandler) {
-			return nullptr;
-		}
-
-		RE::TESForm* result = nullptr;
-		try {
-			if (const auto delimiter = a_identifier.find('|'); delimiter != std::string_view::npos) {
-				const auto modName = a_identifier.substr(0, delimiter);
-				const auto modForm = a_identifier.substr(delimiter + 1);
-				auto rawFormID = static_cast<std::uint32_t>(std::stoul(std::string(modForm), nullptr, 16));
-
-				const auto* mod = dataHandler->LookupModByName(modName);
-				if (mod && mod->IsLight()) {
-					rawFormID &= 0xFFF;
-				} else {
-					rawFormID &= 0xFFFFFF;
-				}
-
-				result = dataHandler->LookupForm(rawFormID, modName);
-			} else {
-				result = RE::TESForm::LookupByEditorID(a_identifier);
-			}
-		} catch (const std::exception& e) {
-			logger::warn("LuaPatcher: invalid form identifier '{}': {}", a_identifier, e.what());
-		}
-
-		cache.emplace(key, result);
-		return result;
-	}
-
 	// Reverse of the game's editorID -> form lookup table.
 	//
 	// The virtual GetFormEditorID() returns "" for most form classes (only a few,
@@ -147,13 +104,17 @@ namespace
 
 	// ---- lua_patcher core functions ----
 
-	sol::object GetFormById(sol::this_state a_state, sol::object a_identifier)
+	sol::object GetFormById(sol::this_state a_state, const sol::object& a_identifier)
 	{
+		if (!a_identifier.is<std::string>()) {
+			throw sol::error{ "bad argument #1 to 'GetFormById' (identifier must be a string)" };
+		}
+
 		sol::state_view lua(a_state);
-		return LuaPatcher::PushForm(lua, LuaPatcher::GetFormFromIdentifier(a_identifier.as<std::string>()));
+		return LuaPatcher::PushForm(lua, LuaPatcher::LookupFormByIdentifier(a_identifier.as<std::string_view>()));
 	}
 
-	bool IsPluginInstalled(sol::object a_name)
+	bool IsPluginInstalled(const sol::object& a_name)
 	{
 		auto* dataHandler = RE::TESDataHandler::GetSingleton();
 		const auto name = a_name.as<std::string>();
@@ -163,26 +124,26 @@ namespace
 
 	// Whitelisted config loader: primary Data/SKSE/Plugins/LuaPatcher/Scripts/<name>_config.lua
 	// (flat sibling of the script, mirrors examples/<Name>/<Name>.lua + <Name>_config.lua).
-	// Legacy fallbacks: Data/SKSE/Plugins/LuaPatcher/Config/<name>.lua and Config/<name>_config.lua.
 	// Returns the chunk's return value (usually a table) or nil on miss/error.
 	// Security: name must be a plain file name, no path separators or "..".
-	sol::object TryLoadConfig(sol::this_state a_state, sol::object a_name)
+	sol::object TryLoadConfig(sol::this_state a_state, const sol::object& a_name)
 	{
 		sol::state_view lua(a_state);
 
 		if (!a_name.is<std::string>()) {
 			throw sol::error{ "bad argument #1 to 'tryLoadConfig' (config name must be a string)" };
 		}
+
 		const std::string nameStr = a_name.as<std::string>();
 		const std::string_view name(nameStr);
 		if (name.empty()) {
 			throw sol::error{ "bad argument #1 to 'tryLoadConfig' (config name must be non-empty)" };
 		}
-		if (name.find("..") != std::string_view::npos ||
-			name.find('/') != std::string_view::npos ||
-			name.find('\\') != std::string_view::npos ||
-			name.find(':') != std::string_view::npos) {
-			throw sol::error{ "bad argument #1 to 'tryLoadConfig' (config name must be a plain file name without path separators or '..')" };
+		if (name.contains("..") || name.contains('/') || name.contains('\\') || name.contains(':')) {
+			throw sol::error{
+				"bad argument #1 to 'tryLoadConfig' (config name must be a plain file name without path separators or "
+				"'..')"
+			};
 		}
 
 		std::string baseName(nameStr);
@@ -192,23 +153,11 @@ namespace
 
 		namespace fs = std::filesystem;
 		const fs::path scriptDir = "Data/SKSE/Plugins/LuaPatcher/Scripts";
-		const fs::path legacyConfigDir = "Data/SKSE/Plugins/LuaPatcher/Config";
-		// Flat layout: Scripts/<Name>_config.lua sibling to Scripts/<Name>.lua (matches examples/)
+
 		fs::path file = scriptDir / (baseName + "_config.lua");
 		if (!fs::exists(file)) {
-			// Legacy fallbacks: Config/<Name>.lua and Config/<Name>_config.lua
-			fs::path legacy1 = legacyConfigDir / (baseName + ".lua");
-			fs::path legacy2 = legacyConfigDir / (baseName + "_config.lua");
-			if (fs::exists(legacy1)) {
-				file = legacy1;
-			} else if (fs::exists(legacy2)) {
-				file = legacy2;
-			} else {
-				logger::info(
-					"LuaPatcher: config '{}' not found at '{}' nor legacy '{}'/'{}', using defaults", baseName,
-					file.generic_string(), legacy1.generic_string(), legacy2.generic_string());
-				return sol::nil;
-			}
+			logger::info("LuaPatcher: config '{}' not found at '{}', using defaults", baseName, file.generic_string());
+			return sol::nil;
 		}
 
 		std::ifstream in(file, std::ios::binary);
@@ -216,6 +165,7 @@ namespace
 			logger::warn("LuaPatcher: config '{}' found but could not be opened: {}", baseName, file.generic_string());
 			return sol::nil;
 		}
+
 		std::string contents((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 		if (contents.empty()) {
 			logger::warn("LuaPatcher: config '{}' is empty: {}", baseName, file.generic_string());
@@ -223,7 +173,8 @@ namespace
 		}
 
 		const std::string chunkName = "@" + file.generic_string();
-		sol::protected_function_result result = lua.safe_script(contents, sol::script_pass_on_error, chunkName, sol::load_mode::any);
+		sol::protected_function_result result =
+			lua.safe_script(contents, sol::script_pass_on_error, chunkName, sol::load_mode::any);
 		if (!result.valid()) {
 			sol::error err = result;
 			logger::error("LuaPatcher: failed to load config '{}': {}", file.generic_string(), err.what());
@@ -241,15 +192,50 @@ namespace
 
 namespace LuaPatcher
 {
-	RE::TESForm* GetFormFromIdentifier(std::string_view a_identifier)
+	RE::TESForm* LookupFormByIdentifier(const std::string_view& a_identifier)
 	{
-		return GetFormFromIdentifierCached(a_identifier);
+		static std::unordered_map<std::string, RE::TESForm*> cache;
+
+		const std::string key(a_identifier);
+		if (const auto it = cache.find(key); it != cache.end()) {
+			return it->second;
+		}
+
+		auto* dataHandler = RE::TESDataHandler::GetSingleton();
+		if (!dataHandler) {
+			return nullptr;
+		}
+
+		RE::TESForm* result = nullptr;
+		try {
+			if (const auto delimiter = a_identifier.find('|'); delimiter != std::string_view::npos) {
+				const auto modName = a_identifier.substr(0, delimiter);
+				const auto modForm = a_identifier.substr(delimiter + 1);
+				auto rawFormID = static_cast<std::uint32_t>(std::stoul(std::string(modForm), nullptr, 16));
+
+				const auto* mod = dataHandler->LookupModByName(modName);
+				if (mod && mod->IsLight()) {
+					rawFormID &= 0xFFF;
+				} else {
+					rawFormID &= 0xFFFFFF;
+				}
+
+				result = dataHandler->LookupForm(rawFormID, modName);
+			} else {
+				result = RE::TESForm::LookupByEditorID(a_identifier);
+			}
+		} catch (const std::exception& e) {
+			logger::warn("LuaPatcher: invalid form identifier '{}': {}", a_identifier, e.what());
+		}
+
+		cache.emplace(key, result);
+		return result;
 	}
 
-	RE::TESForm* CheckForm(sol::object a_value)
+	RE::TESForm* CheckForm(const sol::object& a_value)
 	{
 		if (a_value.is<std::string>()) {
-			auto* form = GetFormFromIdentifier(a_value.as<std::string>());
+			auto* form = LookupFormByIdentifier(a_value.as<std::string_view>());
 			if (!form) {
 				throw sol::error{ "form identifier does not resolve to a loaded form" };
 			}
@@ -259,7 +245,7 @@ namespace LuaPatcher
 		return ToAnyForm(a_value);
 	}
 
-	RE::TESForm* ToAnyForm(sol::object a_value)
+	RE::TESForm* ToAnyForm(const sol::object& a_value)
 	{
 		if (a_value.is<LuaForm>()) {
 			return a_value.as<LuaForm>().form;
@@ -267,7 +253,7 @@ namespace LuaPatcher
 		throw sol::error{ "expected a form identifier string or a Form" };
 	}
 
-	sol::object PushForm(sol::state_view a_lua, RE::TESForm* a_form)
+	sol::object PushForm(sol::state_view& a_lua, RE::TESForm* a_form)
 	{
 		if (!a_form) {
 			return sol::nil;
@@ -290,43 +276,93 @@ namespace LuaPatcher
 		}
 	}
 
-	void RegisterApi(sol::state_view a_lua)
+	void RegisterApi(sol::state_view& a_lua)
 	{
-		a_lua.new_usertype<LuaForm>("Form", sol::meta_function::index, sol::readonly_property(UnknownPropertyGetter<LuaForm>), sol::meta_function::to_string, [](const LuaForm& a_form) {
+		a_lua.new_usertype<LuaForm>(
+			"Form", sol::meta_function::index, sol::readonly_property(UnknownPropertyGetter<LuaForm>),
+			sol::meta_function::to_string,
+
+			[](const LuaForm& a_form) {
 				const auto identifier = FormToIdentifier(a_form.form);
-				return fmt::format("Form[{}|{:08X}]", identifier, a_form.form->GetFormID()); }, "formId", sol::property([](const LuaForm& a_form) { return static_cast<lua_Integer>(a_form.form->GetFormID()); }), "typeId", sol::property([](const LuaForm& a_form) { return static_cast<lua_Integer>(a_form.form->GetFormType()); }), "type", sol::property([](const LuaForm& a_form) { return std::string(RE::FormTypeToString(a_form.form->GetFormType())); }), "editorId", sol::property([](const LuaForm& a_form) -> sol::optional<std::string> {
+
+				return fmt::format("Form[{}|{:08X}]", identifier, a_form.form->GetFormID());
+			},
+
+			"formId",
+
+			sol::property([](const LuaForm& a_form) { return static_cast<lua_Integer>(a_form.form->GetFormID()); }),
+
+			"typeId",
+
+			sol::property([](const LuaForm& a_form) { return static_cast<lua_Integer>(a_form.form->GetFormType()); }),
+
+			"type",
+
+			sol::property(
+				[](const LuaForm& a_form) { return std::string(RE::FormTypeToString(a_form.form->GetFormType())); }),
+
+			"editorId",
+
+			sol::property([](const LuaForm& a_form) -> sol::optional<std::string> {
 				const auto& cache = EditorIdCache();
+
 				if (const auto it = cache.find(a_form.form->GetFormID()); it != cache.end()) {
 					return it->second;
 				}
+
 				if (const char* editorID = a_form.form->GetFormEditorID(); editorID && *editorID) {
 					return std::string(editorID);
 				}
-				return sol::nullopt; }), "name", sol::property([](const LuaForm& a_form) -> sol::optional<std::string> {
+
+				return sol::nullopt;
+			}),
+
+			"name",
+
+			sol::property([](const LuaForm& a_form) -> sol::optional<std::string> {
 				if (const char* name = a_form.form->GetName(); name && *name) {
 					return std::string(name);
 				}
-				return sol::nullopt; }), "identifier", sol::property([](const LuaForm& a_form) { return FormToIdentifier(a_form.form); }), "plugin", sol::property([](const LuaForm& a_form) -> sol::optional<std::string> {
+
+				return sol::nullopt;
+			}),
+
+			"identifier", sol::property([](const LuaForm& a_form) { return FormToIdentifier(a_form.form); }),
+
+			"plugin", sol::property([](const LuaForm& a_form) -> sol::optional<std::string> {
 				if (auto* file = a_form.form->GetFile(0)) {
 					const auto name = file->GetFilename();
 					return std::string(name);
 				}
-				return sol::nullopt; }), "value", sol::property([](const LuaForm& a_form) -> sol::optional<lua_Integer> {
+
+				return sol::nullopt;
+			}),
+
+			"value", sol::property([](const LuaForm& a_form) -> sol::optional<lua_Integer> {
 				const auto* valueForm = a_form.form->As<RE::TESValueForm>();
 				if (valueForm) {
 					return static_cast<lua_Integer>(valueForm->value);
 				}
-				return sol::nullopt; }), "weight", sol::property([](const LuaForm& a_form) -> sol::optional<double> {
+				return sol::nullopt;
+			}),
+
+			"weight", sol::property([](const LuaForm& a_form) -> sol::optional<double> {
 				const auto* weightForm = a_form.form->As<RE::TESWeightForm>();
 				if (weightForm) {
 					return weightForm->weight;
 				}
-				return sol::nullopt; }), "enchantment", sol::property([](const LuaForm& a_form) -> sol::optional<LuaForm> {
+				return sol::nullopt;
+			}),
+
+			"enchantment", sol::property([](const LuaForm& a_form) -> sol::optional<LuaForm> {
 				const auto* enchantable = a_form.form->As<RE::TESEnchantableForm>();
 				if (enchantable && enchantable->formEnchanting) {
 					return LuaForm{ enchantable->formEnchanting };
 				}
-				return sol::nullopt; }), "keywords", sol::property([](const LuaForm& a_form) {
+				return sol::nullopt;
+			}),
+
+			"keywords", sol::property([](const LuaForm& a_form) {
 				const auto* keywordForm = a_form.form->As<RE::BGSKeywordForm>();
 				std::vector<LuaForm> result;
 				if (keywordForm) {
@@ -335,10 +371,15 @@ namespace LuaPatcher
 						result.emplace_back(LuaForm{ keywordForm->keywords[i] });
 					}
 				}
-				return result; }), "hasKeyword", [](const LuaForm& a_form, sol::object a_keyword) {
+				return result;
+			}),
+
+			"hasKeyword",
+			[](const LuaForm& a_form, const sol::object& a_keyword) {
 				auto* keyword = CheckForm(a_keyword)->As<RE::BGSKeyword>();
 				const auto* keywordForm = a_form.form->As<RE::BGSKeywordForm>();
-				return keyword && keywordForm && keywordForm->HasKeyword(keyword); });
+				return keyword && keywordForm && keywordForm->HasKeyword(keyword);
+			});
 
 		sol::table patcher = a_lua.create_table(0, 8);
 		patcher["version"] = "0.1.0";

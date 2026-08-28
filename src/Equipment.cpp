@@ -197,6 +197,29 @@ namespace LuaPatcher
 					a_value = std::min<lua_Integer>(a_value, 0xFFFF);
 					weapon->criticalData.damage = static_cast<std::uint16_t>(a_value);
 				}),
+
+			"enchantment",
+			sol::property(
+				[](const LuaWeapon& a_form) -> sol::optional<LuaEnchantment> {
+					auto* enchantable = a_form.form->As<RE::TESEnchantableForm>();
+					if (enchantable && enchantable->formEnchanting) {
+						return LuaEnchantment{ enchantable->formEnchanting };
+					}
+					return sol::nullopt;
+				},
+				[](LuaWeapon& a_form, const sol::object& a_value) {
+					auto* enchantable = a_form.form->As<RE::TESEnchantableForm>();
+					if (a_value.is<sol::nil_t>()) {
+						enchantable->formEnchanting = nullptr;
+						return;
+					}
+					auto* enchantment = CheckForm(a_value)->As<RE::EnchantmentItem>();
+					if (!enchantment) {
+						throw sol::error{ "enchantment must be an enchantment form or nil" };
+					}
+					enchantable->formEnchanting = enchantment;
+				}),
+
 			"weight",
 			sol::property([](const LuaWeapon& a_form) { return a_form.form->As<RE::TESObjectWEAP>()->weight; },
 				[](LuaWeapon& a_form, double a_value) {
@@ -238,6 +261,29 @@ namespace LuaPatcher
 			"Armor", sol::base_classes, sol::bases<LuaForm>(), sol::meta_function::index,
 			sol::readonly_property(UnknownPropertyGetter<LuaArmor>), sol::meta_function::to_string,
 			[](const LuaArmor& a_form) { return fmt::format("Armor[{:08X}]", a_form.form->GetFormID()); },
+
+			"enchantment",
+			sol::property(
+				[](const LuaArmor& a_form) -> sol::optional<LuaEnchantment> {
+					auto* enchantable = a_form.form->As<RE::TESEnchantableForm>();
+					if (enchantable && enchantable->formEnchanting) {
+						return LuaEnchantment{ enchantable->formEnchanting };
+					}
+					return sol::nullopt;
+				},
+				[](LuaArmor& a_form, const sol::object& a_value) {
+					auto* enchantable = a_form.form->As<RE::TESEnchantableForm>();
+					if (a_value.is<sol::nil_t>()) {
+						enchantable->formEnchanting = nullptr;
+						return;
+					}
+					auto* enchantment = CheckForm(a_value)->As<RE::EnchantmentItem>();
+					if (!enchantment) {
+						throw sol::error{ "enchantment must be an enchantment form or nil" };
+					}
+					enchantable->formEnchanting = enchantment;
+				}),
+
 			"armorRating",
 			sol::property([](const LuaArmor& a_form) { return a_form.form->As<RE::TESObjectARMO>()->GetArmorRating(); },
 				[](LuaArmor& a_form, double a_value) {

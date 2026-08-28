@@ -58,7 +58,12 @@ namespace LuaPatcher
 	{};
 
 	struct LuaLight : LuaForm
-	{};
+	{
+	};
+
+	struct LuaEncounterZone : LuaForm
+	{
+	};
 
 	// Fallback __index handler: raises a Lua error for unknown properties
 	// instead of silently returning nil (matches the pre-sol2 behavior).
@@ -118,4 +123,7 @@ namespace LuaPatcher
 
 	// Registers the Light usertype and the light API functions.
 	void RegisterLight(sol::state_view& a_lua);
+
+	// Registers the EncounterZone usertype and the encounter zone API functions.
+	void RegisterEncounterZone(sol::state_view& a_lua);
 }

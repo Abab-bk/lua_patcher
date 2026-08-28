@@ -1,6 +1,7 @@
 #include "ScriptLoader.h"
 
 #include "LuaApi.h"
+#include "Protection.h"
 #include "Utils.h"
 
 #include <algorithm>
@@ -136,6 +137,9 @@ namespace LuaPatcher
 		RegisterWorld(lua);
 		RegisterShout(lua);
 		RegisterLight(lua);
+		RegisterEncounterZone(lua);
+		BuildQuestProtection();
+		RegisterProtection(lua);
 
 		for (const auto& [priority, script] : scripts) {
 			logger::info("LuaPatcher: running script '{}' (priority {})", script.generic_string(), priority);

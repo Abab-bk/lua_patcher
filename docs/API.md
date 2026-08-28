@@ -49,6 +49,8 @@ conditions.
 | `allGlobals()` | array of Global | Every `TESGlobal` |
 | `allShouts()` | array of Shout | Every `TESShout` |
 | `allLights()` | array of Light | Every `TESObjectLIGH` |
+| `allEncounterZones()` | array of EncounterZone | Every `BGSEncounterZone` (ENCOUNTER_ZONE records) |
+| `isQuestReferenced(formOrId)` | bool | True when any loaded quest alias references the form (forced refs, created objects, unique actors); protects quest gear/NPCs from randomizers |
 | `print(...)` | — | Redirected to the plugin log (same formatting as log) |
 
 
@@ -87,6 +89,7 @@ Weapon, Armor, LeveledList, Spell, MagicEffect, Enchantment, Ingredient, Potion,
 | `reach` | rw | number |  |
 | `stagger` | rw | number |  |
 | `critDamage` | rw | integer | Clamped to 0..65535 |
+| `enchantment` | rw | ? |  |
 | `weight` | rw | number |  |
 | `value` | rw | integer | Non-negative |
 | `weaponType` | ro | string | "HandToHandMelee", "OneHandedSword", "OneHandedDagger", "OneHandedAxe", "OneHandedMace", "TwoHandedSword", "TwoHandedAxe", "Bow", "Staff", "Crossbow" |
@@ -109,6 +112,7 @@ Weapon, Armor, LeveledList, Spell, MagicEffect, Enchantment, Ingredient, Potion,
 
 | Property | R/W | Type | Notes |
 |---|---|---|---|
+| `enchantment` | rw | ? |  |
 | `armorRating` | rw | number | Stored as rating x 100, rounded |
 | `armorType` | ro | string | "Light", "Heavy", "Clothing" |
 | `slots` | ro | array of string | "Head", "Hair", "Body", "Hands", "Forearms", "Amulet", "Ring", "Feet", "Calves", "Shield", "Tail", "LongHair", "Circlet", "Ears" |

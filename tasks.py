@@ -25,6 +25,13 @@ Usage:
     invoke package-example --version X.Y.Z   override version
     invoke package-example --out DIR         override output dir/file (default: dist/)
 
+    invoke package-tools                     package protectgen (third_party) as companion zip
+    invoke package-tools --version X.Y.Z     override version
+
+    invoke gen-protection                    regenerate EverythingRandomizer_protection.lua from the
+                                             vanilla + Creation Club plugin files (--data-dir from
+                                             $SKYRIM_FOLDER, optional --plugins/--mods-dir for modded)
+
     invoke list-examples                     list distributable examples
 """
 
@@ -174,6 +181,13 @@ def _copy_single_example(example: str, mods_folder: str) -> None:
         cfg_dst = scripts_dir / cfg_src.name
         shutil.copy2(cfg_src, cfg_dst)
         print(f"Copied config {cfg_src.name} -> {cfg_dst}")
+
+    # Extra generated data files (e.g. EverythingRandomizer_protection.lua)
+    # ship as flat siblings too, so tryLoadConfig finds them next to the script.
+    for extra in src.parent.glob("*_protection.lua"):
+        extra_dst = scripts_dir / extra.name
+        shutil.copy2(extra, extra_dst)
+        print(f"Copied data {extra.name} -> {extra_dst}")
 
 
 @task
@@ -426,6 +440,11 @@ def package_example(
         else:
             print(f"No config found for '{chosen}' (looked for {chosen}_config.lua), packaging script only")
 
+        # Extra generated data files (e.g. EverythingRandomizer_protection.lua)
+        for extra in src.parent.glob("*_protection.lua"):
+            shutil.copy2(extra, scripts_dir / extra.name)
+            print(f"Added data: {SCRIPTS_RELATIVE / extra.name}")
+
         # Create zip: (cd "$tmp" && 7z a -tzip out.zip SKSE > /dev/null)
         out_zip = tmp / "out.zip"
         result = subprocess.run(
@@ -452,6 +471,135 @@ def package_example(
         with open(github_output, "a", encoding="utf-8") as f:
             f.write(f"zip_example={zip_name}\n")
             f.write(f"example={chosen}\n")
+
+
+@task
+def gen_protection(c: Context, data_dir: str = "", plugins: str = "", mods_dir: str = "", out: str = ""):
+    """Regenerate EverythingRandomizer_protection.lua from the plugin files.
+
+    Defaults to the vanilla + Creation Club masters only (no mods), keeping
+    the repository free of any private load order. Pass --plugins to include
+    a modded load order for personal use (do not commit the result).
+
+    --data-dir  Skyrim folder or Data directory (default: $SKYRIM_FOLDER)
+    --plugins   optional plugins.txt to include a modded load order
+    --mods-dir  MO2 mods staging folder, resolves --plugins files not in Data
+    --out       output Lua file (default: examples/EverythingRandomizer/EverythingRandomizer_protection.lua)
+    """
+    _ensure_root()
+    _load_env()
+
+    skyrim_folder = os.environ.get("SKYRIM_FOLDER", "")
+    if not data_dir:
+        data_dir = skyrim_folder
+    if not data_dir:
+        raise Exit("no --data-dir given and SKYRIM_FOLDER is not set (see .env)")
+    if not shutil.which("dotnet"):
+        raise Exit("dotnet is not installed (required for protectgen)")
+
+    if not out:
+        out = str(EXAMPLES_ROOT / "EverythingRandomizer" / "EverythingRandomizer_protection.lua")
+    out_path = Path(out)
+    if not out_path.is_absolute():
+        out_path = ROOT / out_path
+
+    explorer = ROOT / "third_party" / "protectgen"
+    cmd = f"dotnet run --project {explorer} -c Release -- {data_dir} --out {out_path}"
+    if plugins:
+        if not Path(plugins).is_file():
+            raise Exit(f"plugins.txt not found: {plugins}")
+        cmd += f" --plugins {plugins}"
+        if mods_dir:
+            if not Path(mods_dir).is_dir():
+                raise Exit(f"mods dir not found: {mods_dir}")
+            cmd += f" --mods-dir {mods_dir}"
+    c.run(cmd, echo=True)
+
+    print(f"\nProtection dataset written to {out_path}")
+
+
+@task
+def package_tools(c: Context, version: str = "", out: str = ""):
+    """Package the protectgen protection generator as a companion zip.
+
+    Contains the win-x64 self-contained single-file protectgen.exe (no .NET
+    install needed), its source, README.md and the GPL-3.0 LICENSE (see
+    third_party/README.md release manifest). Shipped alongside the
+    EverythingRandomizer standalone mod.
+
+    --version X.Y.Z  override version (default: git tag or CMakeLists.txt)
+    --out DIR        output dir or file (default: dist/EverythingRandomizer-tools-<ver>.zip)
+    """
+    _ensure_root()
+
+    if not shutil.which("7z"):
+        raise Exit("7z is not installed")
+    if not shutil.which("dotnet"):
+        raise Exit("dotnet is not installed (required to publish protectgen)")
+
+    ver = _resolve_version(version)
+    tp = ROOT / "third_party"
+    pg = tp / "protectgen"
+
+    if out and out.strip():
+        out_path = Path(out.strip())
+        if not out_path.is_absolute():
+            out_path = ROOT / out_path
+        if out_path.suffix.lower() == ".zip":
+            zip_name = out_path
+            zip_name.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            out_path.mkdir(parents=True, exist_ok=True)
+            zip_name = out_path / f"EverythingRandomizer-tools-{ver}.zip"
+    else:
+        zip_name = ROOT / "dist" / f"EverythingRandomizer-tools-{ver}.zip"
+        zip_name.parent.mkdir(parents=True, exist_ok=True)
+
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        publish_dir = tmp / "publish"
+        c.run(
+            f"dotnet publish {pg} -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o {publish_dir}",
+            echo=True,
+        )
+        exe = publish_dir / "protectgen.exe"
+        if not exe.is_file():
+            raise Exit("publish failed: protectgen.exe not found")
+        shutil.copy2(exe, tmp / "protectgen.exe")
+        shutil.rmtree(publish_dir, ignore_errors=True)
+        print("Added protectgen.exe (win-x64 self-contained)")
+
+        src_dir = tmp / "protectgen"
+        src_dir.mkdir()
+        shutil.copy2(pg / "Program.cs", src_dir / "Program.cs")
+        shutil.copy2(pg / "protectgen.csproj", src_dir / "protectgen.csproj")
+        shutil.copy2(tp / "README.md", tmp / "README.md")
+        shutil.copy2(ROOT / "LICENSE", tmp / "LICENSE")
+        print("Added protectgen/ source, README.md, LICENSE")
+
+        out_zip = tmp / "out.zip"
+        result = subprocess.run(
+            ["7z", "a", "-tzip", str(out_zip), "."],
+            cwd=str(tmp),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise Exit(f"7z failed: {result.stderr}")
+
+        if zip_name.exists():
+            zip_name.unlink()
+        shutil.move(str(out_zip), str(zip_name))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print(f"\nPackageTools: {zip_name}  (version={ver})")
+
+    github_output = os.environ.get("GITHUB_OUTPUT", "")
+    if github_output:
+        with open(github_output, "a", encoding="utf-8") as f:
+            f.write(f"zip_tools={zip_name}\n")
 
 
 @task(aliases=["listExamples"])

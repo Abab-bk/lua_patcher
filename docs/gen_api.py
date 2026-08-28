@@ -71,6 +71,7 @@ MODULE_NOTES = {
     "getForm": 'Resolves `"Mod.esm|000123"` / EditorID; never raises',
     "isPluginInstalled": "Is the plugin in the load order",
     "tryLoadConfig": "Loads sibling `Scripts/<name>_config.lua`; nil if missing/failed; raises on invalid names",
+    "isQuestReferenced": "True when any loaded quest alias references the form (forced refs, created objects, unique actors); protects quest gear/NPCs from randomizers",
     "leveledList": "Raises if the form is not a leveled item/character/spell list",
     "allLeveledItems": "Every `TESLevItem`",
     "allLeveledCharacters": "Every `TESLevCharacter`",
@@ -87,6 +88,7 @@ MODULE_NOTES = {
     "allGlobals": "Every `TESGlobal`",
     "allShouts": "Every `TESShout`",
     "allLights": "Every `TESObjectLIGH`",
+    "allEncounterZones": "Every `BGSEncounterZone` (ENCOUNTER_ZONE records)",
     "findLeveledListsContaining": "Snapshot reverse index: lists referencing the form in the game's pristine data (patches made this run are not visible)",
     "formList": "Raises if the form is not a form list",
     "allFormLists": "Every `BGSListForm`",
@@ -97,6 +99,7 @@ MODULE_RETURNS = {
     "getForm": "Form or nil",
     "isPluginInstalled": "bool",
     "tryLoadConfig": "table or nil",
+    "isQuestReferenced": "bool",
     "leveledList": "LeveledList",
     "allLeveledItems": "array of LeveledList",
     "allLeveledCharacters": "array of LeveledList",
@@ -113,6 +116,7 @@ MODULE_RETURNS = {
     "allGlobals": "array of Global",
     "allShouts": "array of Shout",
     "allLights": "array of Light",
+    "allEncounterZones": "array of EncounterZone",
     "findLeveledListsContaining": "array of LeveledList",
     "formList": "FormList",
     "allFormLists": "array of FormList",
@@ -617,6 +621,8 @@ def main() -> int:
         SRC_DIR / "World.cpp",
         SRC_DIR / "Shout.cpp",
         SRC_DIR / "Light.cpp",
+        SRC_DIR / "EncounterZone.cpp",
+        SRC_DIR / "Protection.cpp",
     ]
     types: dict[str, dict] = {}
     module: list[tuple[str, str, str]] = []  # (cpp function name, lua key, source text)

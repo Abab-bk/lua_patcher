@@ -1,0 +1,5 @@
+# Build + analysis output of the Mutagen explorer
+bin/
+obj/
+out/
+*.user

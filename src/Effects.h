@@ -98,6 +98,10 @@ namespace LuaPatcher::Effects
 	}
 
 	// Replaces the item's effect list with the given array of snapshots.
+	// NOTE: old effect objects are intentionally NOT freed. Scripts may move
+	// effect pointers between items (effect-slot shuffles), so the previous
+	// elements can still be referenced by other items; freeing them here
+	// would cause dangling pointers. The leak is bounded (once per launch).
 	inline void SetEffectList(RE::MagicItem* a_item, const sol::object& a_list)
 	{
 		if (!a_list.is<sol::table>()) {
@@ -149,5 +153,6 @@ namespace LuaPatcher::Effects
 		return static_cast<lua_Integer>(a_item->effects.size());
 	}
 
+	// See SetEffectList: old effect objects are intentionally not freed.
 	inline void ClearEffects(RE::MagicItem* a_item) { a_item->effects.clear(); }
 }  // namespace LuaPatcher::Effects

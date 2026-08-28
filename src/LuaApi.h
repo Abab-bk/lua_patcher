@@ -33,6 +33,9 @@ namespace LuaPatcher
 	struct LuaMagicEffect : LuaForm
 	{};
 
+	struct LuaFormList : LuaForm
+	{};
+
 	// Fallback __index handler: raises a Lua error for unknown properties
 	// instead of silently returning nil (matches the pre-sol2 behavior).
 	template <class T>
@@ -52,8 +55,8 @@ namespace LuaPatcher
 	// Returns the TESForm stored in any form userdata at a_index (no identifier strings).
 	RE::TESForm* ToAnyForm(const sol::object& a_value);
 
-	// Pushes a typed userdata for a_form (Weapon/Armor/LeveledList/Spell/MagicEffect/Form
-	// by form type), or nil for a null form.
+	// Pushes a typed userdata for a_form (Weapon/Armor/LeveledList/Spell/MagicEffect/
+	// FormList/Form by form type), or nil for a null form.
 	sol::object PushForm(sol::state_view& a_lua, RE::TESForm* a_form);
 
 	// Registers the `lua_patcher` global table, the `print` override and the Form usertype.
@@ -67,4 +70,7 @@ namespace LuaPatcher
 
 	// Registers Spell/MagicEffect usertypes and magic API functions.
 	void RegisterMagic(sol::state_view& a_lua);
+
+	// Registers the FormList usertype and the form list API functions.
+	void RegisterFormList(sol::state_view& a_lua);
 }

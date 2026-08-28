@@ -86,6 +86,7 @@ else()
         src/LeveledList.cpp
         src/Equipment.cpp
         src/Magic.cpp
+        src/FormList.cpp
         "${CMAKE_CURRENT_BINARY_DIR}/src/version.rc"
         USE_ADDRESS_LIBRARY)
 
@@ -127,7 +128,7 @@ else()
     # CommonLibSSE-NG propagates MSVC-only flags (/Zc:preprocessor) on its interface;
     # clang-cl ignores them, so silence the resulting "argument unused" noise.
     if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        target_compile_options(${PROJECT_NAME} PRIVATE "-clang:-Wno-unused-command-line-argument")
+        target_compile_options(${PROJECT_NAME} PRIVATE -Wno-unused-command-line-argument)
     endif()
 
     # LTO/IPO — guarded: unconditionally setting IPO causes a fatal error on toolchains that don't support it

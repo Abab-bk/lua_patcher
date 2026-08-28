@@ -24,6 +24,7 @@ namespace RE
 		Spell = 22,
 		Enchantment = 25,
 		Armor = 26,
+		FormList = 40,
 		Weapon = 41,
 		Global = 44,
 		Keyword = 47,
@@ -55,6 +56,8 @@ namespace RE
 			return "Enchantment";
 		case FormType::Weapon:
 			return "Weapon";
+		case FormType::FormList:
+			return "FormList";
 		default:
 			return "Unknown";
 		}
@@ -119,6 +122,12 @@ namespace RE
 		kOneHanded = 6,
 		kTwoHanded = 7,
 		kArchery = 8,
+		kAlteration = 18,
+		kConjuration = 19,
+		kDestruction = 20,
+		kIllusion = 21,
+		kRestoration = 22,
+		kEnchanting = 23,
 	};
 
 	enum WEAPON_TYPE : std::uint32_t
@@ -310,8 +319,127 @@ namespace RE
 	class BGSKeyword : public TESForm, public BGSKeywordForm
 	{};
 
+	// Mirrors BGSListForm (real CLib semantics): AddForm appends, HasForm is a
+	// set membership test. There is no RemoveForm in the real API either —
+	// removal goes through the snapshot-write-back cycle like leveled lists.
+	class BGSListForm : public TESForm
+	{
+	public:
+		std::vector<TESForm*> forms;
+
+		void AddForm(TESForm* a_form) { forms.push_back(a_form); }
+
+		[[nodiscard]] bool HasForm(const TESForm* a_form) const
+		{
+			return std::ranges::find(forms, a_form) != forms.end();
+		}
+
+		[[nodiscard]] bool HasForm(FormID a_formID) const
+		{
+			return std::ranges::find_if(forms, [a_formID](const TESForm* f) { return f->formID == a_formID; }) !=
+			       forms.end();
+		}
+	};
+
 	class TESGlobal : public TESForm
 	{};
+
+	namespace MagicSystem
+	{
+		enum class SpellType : std::uint32_t
+		{
+			kSpell = 0,
+			kDisease = 1,
+			kPower = 2,
+			kLesserPower = 3,
+			kAbility = 4,
+			kPoison = 5,
+			kEnchantment = 6,
+			kPotion = 7,
+			kIngredient = 8,
+			kLeveledSpell = 9,
+			kAddiction = 10,
+			kVoicePower = 11,
+		};
+
+		enum class CastingType : std::uint32_t
+		{
+			kConstantEffect = 0,
+			kFireAndForget = 1,
+			kConcentration = 2,
+			kScroll = 3,
+		};
+
+		enum class Delivery : std::uint32_t
+		{
+			kSelf = 0,
+			kTouch = 1,
+			kAimed = 2,
+			kTargetActor = 3,
+			kTargetLocation = 4,
+		};
+	}
+
+	namespace EffectArchetypes
+	{
+		enum class ArchetypeID : std::uint32_t
+		{
+			kValueModifier = 0,
+			kScript = 1,
+			kDispel = 2,
+			kCureDisease = 3,
+			kAbsorb = 4,
+			kDualValueModifier = 5,
+			kCalm = 6,
+			kDemoralize = 7,
+			kFrenzy = 8,
+			kDisarm = 9,
+			kCommandSummoned = 10,
+			kInvisibility = 11,
+			kLight = 12,
+		};
+	}
+
+	// Minimal stand-ins for the magic types (field names mirror Magic.cpp usage).
+	class SpellItem : public TESForm, public BGSKeywordForm
+	{
+	public:
+		struct Data
+		{
+			std::int32_t costOverride = 0;
+			MagicSystem::SpellType spellType = MagicSystem::SpellType::kSpell;
+			MagicSystem::CastingType castingType = MagicSystem::CastingType::kFireAndForget;
+			MagicSystem::Delivery delivery = MagicSystem::Delivery::kSelf;
+			float chargeTime = 0.0F;
+			float castDuration = 0.0F;
+			float range = 0.0F;
+		};
+		Data data;
+	};
+
+	class EffectSetting : public TESForm, public BGSKeywordForm
+	{
+	public:
+		struct Data
+		{
+			float baseCost = 0.0F;
+			std::int32_t minimumSkill = 0;
+			std::int32_t spellmakingArea = 0;
+			float spellmakingChargeTime = 0.0F;
+			float taperWeight = 0.0F;
+			float taperCurve = 0.0F;
+			float skillUsageMult = 0.0F;
+			ActorValue associatedSkill = ActorValue::kNone;
+			ActorValue resistVariable = ActorValue::kNone;
+			MagicSystem::CastingType castingType = MagicSystem::CastingType::kFireAndForget;
+			MagicSystem::Delivery delivery = MagicSystem::Delivery::kSelf;
+			EffectArchetypes::ArchetypeID archetype = EffectArchetypes::ArchetypeID::kValueModifier;
+		};
+		Data data;
+
+		[[nodiscard]] bool IsHostile() const { return false; }
+		[[nodiscard]] bool IsDetrimental() const { return false; }
+	};
 
 	class TESValueForm : public BaseFormComponent
 	{

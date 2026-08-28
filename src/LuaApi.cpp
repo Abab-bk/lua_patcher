@@ -269,6 +269,8 @@ namespace LuaPatcher
 			return sol::make_object(a_lua, LuaSpell{ a_form });
 		case RE::FormType::MagicEffect:
 			return sol::make_object(a_lua, LuaMagicEffect{ a_form });
+		case RE::FormType::FormList:
+			return sol::make_object(a_lua, LuaFormList{ a_form });
 		default:
 			return sol::make_object(a_lua, LuaForm{ a_form });
 		}

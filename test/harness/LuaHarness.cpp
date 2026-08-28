@@ -1,7 +1,8 @@
 // Linux smoke-test for the LuaPatcher Lua bindings.
 //
-// Compiles the real src/LuaApi.cpp, src/LeveledList.cpp and src/Equipment.cpp
-// (as separate translation units, like the real build) against mocked RE types
+// Compiles the real src/LuaApi.cpp, src/LeveledList.cpp, src/Equipment.cpp,
+// src/Magic.cpp, src/FormList.cpp and src/ScriptLoader.cpp (as separate
+// translation units, like the real build) against mocked RE types
 // (test/harness/mocks), system Lua and the sol2 headers, then exercises the
 // API from Lua and asserts the resulting game-state mutations.
 //
@@ -12,6 +13,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -19,6 +22,8 @@
 #include "SKSE/SKSE.h"
 
 #include "LuaApi.h"
+#include "ScriptLoader.h"
+#include "Utils.h"
 
 namespace
 {
@@ -45,7 +50,8 @@ namespace
 
 	// Pushes a mock form with the given properties.
 	template <class T>
-	T* AddForm(RE::FormID a_fullID, RE::FormType a_type, std::string a_editorId, std::string a_name, RE::TESFile* a_file)
+	T* AddForm(RE::FormID a_fullID, RE::FormType a_type, std::string a_editorId, std::string a_name,
+		RE::TESFile* a_file)
 	{
 		auto* form = new T();
 		form->formID = a_fullID;
@@ -91,19 +97,28 @@ int main()
 	RE::TESDataHandler::mockMods["MockLight.esl"] = mod2;
 
 	auto* llMain = AddForm<RE::TESLevItem>(0x01000100, RE::FormType::LeveledItem, "MockLeveledList", "Mock Chest", mod);
-	auto* llChar = AddForm<RE::TESLevCharacter>(0x01000400, RE::FormType::LeveledNPC, "MockCharList", "Mock Bandit", mod);
+	auto* llChar =
+		AddForm<RE::TESLevCharacter>(0x01000400, RE::FormType::LeveledNPC, "MockCharList", "Mock Bandit", mod);
 	auto* kwForm = AddForm<RE::BGSKeyword>(0x01000500, RE::FormType::Keyword, "MockKeyword", "MockKeyword", mod);
 	auto* global = AddForm<RE::TESGlobal>(0x01000300, RE::FormType::Global, "MockGlobal", "MockGlobal", mod);
-	auto* globalLight = AddForm<RE::TESGlobal>(0xFE003001, RE::FormType::Global, "MockLightGlobal", "MockLightGlobal", mod2);
+	auto* globalLight =
+		AddForm<RE::TESGlobal>(0xFE003001, RE::FormType::Global, "MockLightGlobal", "MockLightGlobal", mod2);
 
 	// seed the main list: two entries, then a third form
 	auto* formA = AddForm<RE::TESForm>(0x01000A00, RE::FormType::Keyword, "MockFormA", "Form A", mod);
 	auto* formB = AddForm<RE::TESForm>(0x01000B00, RE::FormType::Keyword, "MockFormB", "Form B", mod);
 	auto* formC = AddForm<RE::TESForm>(0x01000C00, RE::FormType::Keyword, "MockFormC", "Form C", mod);
 	auto* formD = AddForm<RE::TESForm>(0x01000D00, RE::FormType::Keyword, "MockFormD", "Form D", mod);
+	auto* formE = AddForm<RE::TESForm>(0x01000E00, RE::FormType::Keyword, "MockFormE", "Form E", mod);
 	(void)globalLight;
 	(void)formC;
 	(void)formD;
+	(void)formE;
+
+	// form list: seeded with formA/formB, exercised by the FormList API tests
+	auto* formList =
+		AddForm<RE::BGSListForm>(0x01000600, RE::FormType::FormList, "MockFormList", "Mock Form List", mod);
+	formList->forms = { formA, formB };
 
 	llMain->entries = {
 		MakeEntry(formA, 1, 1),
@@ -157,14 +172,16 @@ int main()
 	helmet->armorType = RE::BIPED_MODEL::ArmorType::kLightArmor;
 	helmet->bipedObjectSlots = RE::BIPED_MODEL::BipedObjectSlot::kHead;
 
-	auto* vanillaChest = AddForm<RE::TESObjectARMO>(0x04002000, RE::FormType::Armor, "VanillaChest", "Iron Cuirass", vanillaMod);
+	auto* vanillaChest =
+		AddForm<RE::TESObjectARMO>(0x04002000, RE::FormType::Armor, "VanillaChest", "Iron Cuirass", vanillaMod);
 	vanillaChest->armorType = RE::BIPED_MODEL::ArmorType::kHeavyArmor;
 
-	auto* enchant = AddForm<RE::EnchantmentItem>(0x03003000, RE::FormType::Enchantment, "GearEnch", "Gear Ench", gearMod);
+	auto* enchant =
+		AddForm<RE::EnchantmentItem>(0x03003000, RE::FormType::Enchantment, "GearEnch", "Gear Ench", gearMod);
 	sword->formEnchanting = enchant;
 
-	auto*           gearKw = AddForm<RE::BGSKeyword>(0x03004000, RE::FormType::Keyword, "GearKeyword", "GearKeyword", gearMod);
-	auto*           gearKw2 = AddForm<RE::BGSKeyword>(0x03004001, RE::FormType::Keyword, "GearKeyword2", "GearKeyword2", gearMod);
+	auto* gearKw = AddForm<RE::BGSKeyword>(0x03004000, RE::FormType::Keyword, "GearKeyword", "GearKeyword", gearMod);
+	auto* gearKw2 = AddForm<RE::BGSKeyword>(0x03004001, RE::FormType::Keyword, "GearKeyword2", "GearKeyword2", gearMod);
 	// heap-allocated: the mock AddKeyword/RemoveKeyword delete[] this array,
 	// mirroring the real engine's ownership semantics
 	auto* gearKwArray = new RE::BGSKeyword*[2]{ gearKw, gearKw2 };
@@ -174,23 +191,48 @@ int main()
 	// material keywords the KeywordFixer example derives from item stats
 	// (sword dmg 25 -> Daedric, bow dmg 12 -> Dwarven, chest 25 heavy -> Orcish,
 	//  helmet 10 light -> Elven)
-	auto* kwWeapDaedric = AddForm<RE::BGSKeyword>(0x03004002, RE::FormType::Keyword, "WeapMaterialDaedric", "WeapMaterialDaedric", gearMod);
-	auto* kwWeapDwarven = AddForm<RE::BGSKeyword>(0x03004003, RE::FormType::Keyword, "WeapMaterialDwarven", "WeapMaterialDwarven", gearMod);
-	auto* kwArmorOrcish = AddForm<RE::BGSKeyword>(0x03004004, RE::FormType::Keyword, "ArmorMaterialOrcish", "ArmorMaterialOrcish", gearMod);
-	auto* kwArmorElven  = AddForm<RE::BGSKeyword>(0x03004005, RE::FormType::Keyword, "ArmorMaterialElven", "ArmorMaterialElven", gearMod);
+	auto* kwWeapDaedric = AddForm<RE::BGSKeyword>(0x03004002, RE::FormType::Keyword, "WeapMaterialDaedric",
+		"WeapMaterialDaedric", gearMod);
+	auto* kwWeapDwarven = AddForm<RE::BGSKeyword>(0x03004003, RE::FormType::Keyword, "WeapMaterialDwarven",
+		"WeapMaterialDwarven", gearMod);
+	auto* kwArmorOrcish = AddForm<RE::BGSKeyword>(0x03004004, RE::FormType::Keyword, "ArmorMaterialOrcish",
+		"ArmorMaterialOrcish", gearMod);
+	auto* kwArmorElven =
+		AddForm<RE::BGSKeyword>(0x03004005, RE::FormType::Keyword, "ArmorMaterialElven", "ArmorMaterialElven", gearMod);
+
+	// smithing material sets (BGSListForm) joined by the TemperingLists example
+	auto* tempDaedric = AddForm<RE::BGSListForm>(0x03004006, RE::FormType::FormList, "WeapMaterialDaedricSet",
+		"WeapMaterialDaedricSet", gearMod);
+	auto* tempDwarven = AddForm<RE::BGSListForm>(0x03004007, RE::FormType::FormList, "WeapMaterialDwarvenSet",
+		"WeapMaterialDwarvenSet", gearMod);
+	auto* tempOrcish = AddForm<RE::BGSListForm>(0x03004008, RE::FormType::FormList, "ArmorMaterialOrcishSet",
+		"ArmorMaterialOrcishSet", gearMod);
+	auto* tempElven = AddForm<RE::BGSListForm>(0x03004009, RE::FormType::FormList, "ArmorMaterialElvenSet",
+		"ArmorMaterialElvenSet", gearMod);
+
+	// magic types exercised by the Spell/MagicEffect tests
+	auto* spell = AddForm<RE::SpellItem>(0x03005000, RE::FormType::Spell, "GearSpell", "Gear Spell", gearMod);
+	spell->data.spellType = RE::MagicSystem::SpellType::kAbility;
+	spell->data.costOverride = 100;
+
+	auto* mgef =
+		AddForm<RE::EffectSetting>(0x03005001, RE::FormType::MagicEffect, "GearMgef", "Gear Magic Effect", gearMod);
+	mgef->data.baseCost = 50.0F;
+	mgef->data.associatedSkill = RE::ActorValue::kDestruction;
 
 	// loot lists targeted by the GearInjection example (editorId prefix match
 	// against the example's default targetPrefixes = { "LItem" })
 	std::vector<RE::TESLevItem*> lootLists;
-	for (const char* editorId : { "LItemPlayerLootLight", "LItemPlayerLootHeavy",
-			 "LItemPlayerLootOneHand", "LItemPlayerLootTwoHand", "LItemPlayerLootRanged" }) {
+	for (const char* editorId : { "LItemPlayerLootLight", "LItemPlayerLootHeavy", "LItemPlayerLootOneHand",
+			 "LItemPlayerLootTwoHand", "LItemPlayerLootRanged" }) {
 		auto* list = AddForm<RE::TESLevItem>(0x05000000u + static_cast<RE::FormID>(lootLists.size()),
 			RE::FormType::LeveledItem, editorId, editorId, gearMod);
 		lootLists.push_back(list);
 	}
 
 	// a mod armor that is ALREADY assigned to a leveled list -> excluded
-	auto* assignedArmor = AddForm<RE::TESObjectARMO>(0x03002002, RE::FormType::Armor, "GearAssigned", "Gear Assigned", gearMod);
+	auto* assignedArmor =
+		AddForm<RE::TESObjectARMO>(0x03002002, RE::FormType::Armor, "GearAssigned", "Gear Assigned", gearMod);
 	assignedArmor->armorType = RE::BIPED_MODEL::ArmorType::kLightArmor;
 	lootLists[0]->entries.push_back(MakeEntry(assignedArmor, 1, 1));
 	lootLists[0]->numEntries = 1;
@@ -203,11 +245,13 @@ int main()
 		lua_pushlstring(L, what.data(), what.size());
 		return 1;
 	});
-	lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::coroutine, sol::lib::string,
-		sol::lib::os, sol::lib::math, sol::lib::table, sol::lib::utf8, sol::lib::io, sol::lib::debug);
+	lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::coroutine, sol::lib::string, sol::lib::os,
+		sol::lib::math, sol::lib::table, sol::lib::utf8, sol::lib::io, sol::lib::debug);
 	LuaPatcher::RegisterApi(lua);
 	LuaPatcher::RegisterLeveledList(lua);
 	LuaPatcher::RegisterEquipment(lua);
+	LuaPatcher::RegisterMagic(lua);
+	LuaPatcher::RegisterFormList(lua);
 
 	// --- core API tests -------------------------------------------------
 	DoString(lua, R"LUA(
@@ -229,6 +273,57 @@ assert(lua_patcher.isPluginInstalled("MockLight.esl") == true)
 assert(lua_patcher.isPluginInstalled("Missing.esp") == false)
 assert(#lua_patcher.allLeveledItems() == 6)  -- llMain + 5 loot lists
 assert(#lua_patcher.allLeveledCharacters() == 1)
+)LUA");
+
+	// --- form list API ----------------------------------------------------
+	DoString(lua, R"LUA(
+local fl = lua_patcher.formList("MockFormList")
+assert(fl ~= nil)
+assert(fl.type == "FormList")
+assert(fl.formId == 0x01000600)
+assert(tostring(fl) == "FormList[01000600]", "form list tostring")
+assert(fl.numForms == 2)
+
+local forms = fl:forms()
+assert(forms[1].editorId == "MockFormA" and forms[2].editorId == "MockFormB")
+assert(fl:has("MockFormA") == true)
+assert(fl:has("MockFormC") == false)
+assert(fl:has("MockPlugin.esp|00000A00") == true, "has by formId identifier")
+
+-- set semantics: add of a present form is a no-op
+assert(fl:add("MockFormA") == false)
+assert(fl.numForms == 2)
+assert(fl:add("MockFormC") == true)
+assert(fl.numForms == 3)
+assert(fl:has("MockFormC") == true)
+
+-- remove
+assert(fl:remove("MockFormC") == true)
+assert(fl:has("MockFormC") == false)
+assert(fl:remove("MockFormC") == false)
+assert(fl.numForms == 2)
+
+-- clear + restore
+fl:clear()
+assert(fl.numForms == 0)
+fl:add("MockFormA")
+assert(fl.numForms == 1)
+
+-- identifier form and enumeration (MockFormList + 4 material sets)
+assert(lua_patcher.formList("MockPlugin.esp|00000600").identifier == "MockPlugin.esp|000600")
+assert(#lua_patcher.allFormLists() == 5)
+
+-- typed dispatch: getForm returns the FormList usertype
+assert(lua_patcher.getForm("MockFormList").type == "FormList")
+assert(lua_patcher.getForm("MockFormList").editorId == "MockFormList")
+
+-- errors
+local ok, err = pcall(function() return lua_patcher.formList("MockFormA") end)
+assert(not ok, "formList on a non-list form must fail")
+ok, err = pcall(function() return fl.nope end)
+assert(not ok, "unknown property must fail")
+ok, err = pcall(function() fl:add("NoSuchEditorId") end)
+assert(not ok, "missing form must fail")
 )LUA");
 
 	// --- leveled list operations ----------------------------------------
@@ -456,6 +551,42 @@ assert(plain.value == nil and plain.weight == nil and plain.enchantment == nil)
 assert(#plain.keywords == 0)
 )LUA");
 
+	// --- magic types ------------------------------------------------------
+	DoString(lua, R"LUA(
+local spell = lua_patcher.getForm("GearSpell")
+assert(spell ~= nil and spell.type == "Spell")
+assert(spell.spellType == "Ability")
+assert(spell.costOverride == 100)
+assert(tostring(spell) == "Spell[03005000]", "spell tostring")
+spell.costOverride = 250
+assert(spell.costOverride == 250)
+spell.spellType = "Power"
+assert(spell.spellType == "Power")
+local ok, err = pcall(function() spell.spellType = "Nope" end)
+assert(not ok, "invalid spellType must fail")
+
+local mgef = lua_patcher.getForm("GearMgef")
+assert(mgef ~= nil and mgef.type == "MagicEffect")
+assert(mgef.baseCost == 50)
+assert(mgef.associatedSkill == "Destruction")
+assert(mgef.isHostile == false and mgef.isDetrimental == false)
+mgef.baseCost = 75
+assert(mgef.baseCost == 75)
+assert(tostring(mgef) == "MagicEffect[03005001]", "magic effect tostring")
+
+assert(#lua_patcher.allSpells() == 1)
+assert(#lua_patcher.allMagicEffects() == 1)
+)LUA");
+
+	// --- pure-logic priority parser ---------------------------------------
+	Check(ExampleMod::ParseScriptPriority("-- priority: 20\nlocal x = 1") == 20, "priority: basic");
+	Check(ExampleMod::ParseScriptPriority("-- priority = 30\n") == 30, "priority: '=' form");
+	Check(ExampleMod::ParseScriptPriority("-- priority:10\n") == 10, "priority: no space");
+	Check(ExampleMod::ParseScriptPriority("-- priority: 1.5\n") == 1, "priority: stops at non-digit");
+	Check(ExampleMod::ParseScriptPriority("-- priority: nope\n") == 0, "priority: non-numeric");
+	Check(ExampleMod::ParseScriptPriority("-- no marker here\n") == 0, "priority: missing");
+	Check(ExampleMod::ParseScriptPriority("") == 0, "priority: empty");
+
 	// --- assignment queries ----------------------------------------------
 	DoString(lua, R"LUA(
 local ll = lua_patcher.leveledList("MockPlugin.esp|00000100")
@@ -485,7 +616,8 @@ llChar:clear()
 		exampleMod->compileIndex = 2;
 		RE::TESDataHandler::mockMods["LuaPatcherExample.esp"] = exampleMod;
 
-		auto* exChest = AddForm<RE::TESLevItem>(0x02001000, RE::FormType::LeveledItem, "ExampleChest", "Example Chest", exampleMod);
+		auto* exChest =
+			AddForm<RE::TESLevItem>(0x02001000, RE::FormType::LeveledItem, "ExampleChest", "Example Chest", exampleMod);
 		auto* ex01 = AddForm<RE::TESForm>(0x02002000, RE::FormType::Keyword, "ExForm01", "Ex 01", exampleMod);
 		auto* ex02 = AddForm<RE::TESForm>(0x02002001, RE::FormType::Keyword, "ExForm02", "Ex 02", exampleMod);
 		auto* ex03 = AddForm<RE::TESForm>(0x02002002, RE::FormType::Keyword, "ExForm03", "Ex 03", exampleMod);
@@ -510,7 +642,7 @@ llChar:clear()
 		{
 			FILE* f = std::fopen("examples/snippets/LeveledLists.lua", "rb");
 			Check(f != nullptr, "example script readable");
-			char   buf[4096];
+			char buf[4096];
 			size_t n;
 			while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) {
 				example.append(buf, n);
@@ -531,7 +663,7 @@ llChar:clear()
 		//   final: ex01 x2, ex02 x2, ex03, ex09 (sorted by level)
 		Check(exChest->numEntries == 6, "example: final entry count");
 		std::size_t n01 = 0, n02 = 0, n03 = 0, n09 = 0;
-		bool        has04 = false, has06 = false, has07 = false, has08 = false;
+		bool has04 = false, has06 = false, has07 = false, has08 = false;
 		for (const auto& e : exChest->entries) {
 			if (e.form == ex01)
 				++n01;
@@ -573,7 +705,7 @@ llChar:clear()
 		{
 			FILE* f = std::fopen("examples/GearInjection/GearInjection.lua", "rb");
 			Check(f != nullptr, "gearinjection example readable");
-			char   buf[4096];
+			char buf[4096];
 			size_t n;
 			while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) {
 				example.append(buf, n);
@@ -628,7 +760,7 @@ llChar:clear()
 		{
 			FILE* f = std::fopen("examples/KeywordFixer/KeywordFixer.lua", "rb");
 			Check(f != nullptr, "keywordfixer example readable");
-			char   buf[4096];
+			char buf[4096];
 			size_t n;
 			while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) {
 				example.append(buf, n);
@@ -654,6 +786,90 @@ llChar:clear()
 		Check(!hasKeyword(sword2, kwWeapDaedric), "keywordfixer: non-playable gear untouched");
 		Check(!hasKeyword(vanillaChest, kwArmorOrcish), "keywordfixer: vanilla gear untouched");
 		Check(hasKeyword(chest, gearKw) && hasKeyword(chest, gearKw2), "keywordfixer: existing keywords preserved");
+	}
+
+	// --- run the shipped TemperingLists.lua example -----------------------
+	// Runs after KeywordFixer: it needs the material keywords to exist.
+	{
+		std::string example;
+		{
+			FILE* f = std::fopen("examples/TemperingLists/TemperingLists.lua", "rb");
+			Check(f != nullptr, "temperinglists example readable");
+			char buf[4096];
+			size_t n;
+			while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) {
+				example.append(buf, n);
+			}
+			std::fclose(f);
+		}
+		DoString(lua, example.c_str());
+
+		auto hasInList = [](RE::BGSListForm* a_list, RE::TESForm* a_form) { return a_list->HasForm(a_form); };
+
+		// sword/bow/chest/helmet got their material keywords from KeywordFixer
+		// and must now have joined the matching tempering sets
+		Check(hasInList(tempDaedric, sword), "temperinglists: sword joined Daedric set");
+		Check(hasInList(tempDwarven, bow), "temperinglists: bow joined Dwarven set");
+		Check(hasInList(tempOrcish, chest), "temperinglists: chest joined Orcish set");
+		Check(hasInList(tempElven, helmet), "temperinglists: helmet joined Elven set");
+
+		// vanilla / non-playable / keyword-less gear untouched
+		Check(!hasInList(tempOrcish, vanillaChest), "temperinglists: vanilla gear untouched");
+		Check(!hasInList(tempDaedric, sword2), "temperinglists: non-playable gear untouched");
+		Check(!hasInList(tempOrcish, assignedArmor), "temperinglists: keyword-less gear untouched");
+
+		// idempotent: re-running the script must not duplicate entries
+		DoString(lua, example.c_str());
+		Check(tempDaedric->forms.size() == 1, "temperinglists: re-run is idempotent");
+	}
+
+	// --- script runner: priority ordering + config exclusion ---------------
+	// Runs last: the chain mutates llMain, so nothing may depend on it after.
+	{
+		namespace fs = std::filesystem;
+		const fs::path scriptsDir = "Data/SKSE/Plugins/LuaPatcher/Scripts";
+		fs::remove_all("Data");
+		fs::create_directories(scriptsDir);
+
+		auto writeScript = [&](const char* a_name, const char* a_content) {
+			std::ofstream out(scriptsDir / a_name, std::ios::binary);
+			out << a_content;
+		};
+
+		// chain: each script removes its predecessor's marker and adds its
+		// own; correct priority order leaves only the last marker behind.
+		// File names are deliberately anti-alphabetical to prove the order
+		// comes from priorities, not path sorting.
+		writeScript("zz_30.lua",
+			"-- priority: 30\n"
+			"local ll = lua_patcher.leveledList(\"MockPlugin.esp|00000100\")\n"
+			"ll:remove(\"MockFormC\")\n"
+			"ll:add(\"MockFormD\")\n");
+		writeScript("yy_20.lua",
+			"-- priority: 20\n"
+			"local ll = lua_patcher.leveledList(\"MockPlugin.esp|00000100\")\n"
+			"ll:remove(\"MockFormB\")\n"
+			"ll:add(\"MockFormC\")\n");
+		writeScript("xx_10.lua",
+			"-- priority: 10\n"
+			"local ll = lua_patcher.leveledList(\"MockPlugin.esp|00000100\")\n"
+			"ll:remove(\"MockFormA\")\n"
+			"ll:add(\"MockFormB\")\n");
+		// no priority declaration -> 0, runs first
+		writeScript("aa_00.lua",
+			"local ll = lua_patcher.leveledList(\"MockPlugin.esp|00000100\")\n"
+			"ll:clear()\n"
+			"ll:add(\"MockFormA\")\n");
+		// config files must never be executed as scripts
+		writeScript("zz_30_config.lua", "lua_patcher.leveledList(\"MockPlugin.esp|00000100\"):add(\"MockFormE\")\n");
+
+		LuaPatcher::RunScripts();
+
+		Check(llMain->numEntries == 1, "script runner: chain left exactly one entry");
+		Check(llMain->entries[0].form == formD, "script runner: last-priority marker survives");
+		Check(llMain->entries[0].form != formE, "script runner: config file not executed");
+
+		fs::remove_all("Data");
 	}
 
 	std::printf("All harness checks passed.\n");

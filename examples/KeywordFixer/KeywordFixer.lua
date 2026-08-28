@@ -1,4 +1,5 @@
 -- LuaPatcher example: KeywordFixer — missing/invalid keyword fixes for mod gear
+-- priority: 20 (after stat rebalances, before TemperingLists/GearInjection)
 --
 -- Problems this solves:
 --   1) Mod armors/weapons often lack material keywords (WeapMaterialSteel,

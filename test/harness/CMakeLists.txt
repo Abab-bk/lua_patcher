@@ -32,7 +32,10 @@ add_executable(
     LuaHarness.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/LuaApi.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/LeveledList.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/Equipment.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/Equipment.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/Magic.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/FormList.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/ScriptLoader.cpp)
 
 target_include_directories(
     LuaHarness PRIVATE

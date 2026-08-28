@@ -1,4 +1,5 @@
 -- LuaPatcher example: Weapon & Armor global fixup (real-world)
+-- priority: 10 (rebalance stats first so KeywordFixer tiers see final values)
 --
 -- The writable Equipment API added in LuaPatcher:
 --   weapon.damage / speed / reach / stagger / critDamage / weight / value  (rw)

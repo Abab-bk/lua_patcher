@@ -1,17 +1,19 @@
 #include "ScriptLoader.h"
 
 #include "LuaApi.h"
+#include "Utils.h"
 
 #include <algorithm>
 #include <filesystem>
-#include <fstream>
 #include <sol/state_view.hpp>
-#include <string>
 #include <string_view>
 
 namespace
 {
 	constexpr std::string_view kScriptFolder = "Data/SKSE/Plugins/LuaPatcher/Scripts";
+
+	// Header of a script file, scanned for a "-- priority: N" declaration.
+	constexpr std::size_t kPriorityScanBytes = 512;
 
 	bool HasLuaExtension(const std::filesystem::path& a_path)
 	{
@@ -27,6 +29,16 @@ namespace
 		// Mirrors examples/ layout: ModName.lua + ModName_config.lua
 		const auto filename = a_path.filename().string();
 		return filename.ends_with("_config.lua");
+	}
+
+	// Scripts declare an execution order with a "-- priority: N" comment;
+	// missing declarations default to 0 and run first.
+	int ReadScriptPriority(const std::filesystem::path& a_path)
+	{
+		std::ifstream in(a_path, std::ios::binary);
+		std::array<char, kPriorityScanBytes> head{};
+		in.read(head.data(), static_cast<std::streamsize>(head.size() - 1));
+		return ExampleMod::ParseScriptPriority(std::string_view(head.data()));
 	}
 
 	void RunScript(sol::state_view& a_lua, const std::filesystem::path& a_path)
@@ -88,13 +100,18 @@ namespace LuaPatcher
 			return;
 		}
 
-		std::vector<fs::path> scripts;
+		// Scripts declare an execution order via "-- priority: N" comments;
+		// missing declarations default to 0 and run first. Path order breaks
+		// ties, keeping the pre-priority alphabetical behavior for equal
+		// priorities.
+		std::vector<std::pair<int, fs::path>> scripts;
 		for (const auto& entry : fs::recursive_directory_iterator(base)) {
 			if (entry.is_regular_file() && HasLuaExtension(entry.path()) && !IsConfigFile(entry.path())) {
-				scripts.push_back(entry.path());
+				scripts.emplace_back(ReadScriptPriority(entry.path()), entry.path());
 			}
 		}
-		std::ranges::sort(scripts);
+		std::ranges::sort(scripts,
+			[](const auto& a, const auto& b) { return a.first != b.first ? a.first < b.first : a.second < b.second; });
 
 		if (scripts.empty()) {
 			logger::info("LuaPatcher: no .lua scripts found under '{}'", kScriptFolder);
@@ -111,9 +128,10 @@ namespace LuaPatcher
 		RegisterLeveledList(lua);
 		RegisterEquipment(lua);
 		RegisterMagic(lua);
+		RegisterFormList(lua);
 
-		for (const auto& script : scripts) {
-			logger::info("LuaPatcher: running script '{}'", script.generic_string());
+		for (const auto& [priority, script] : scripts) {
+			logger::info("LuaPatcher: running script '{}' (priority {})", script.generic_string(), priority);
 			RunScript(lua, script);
 		}
 	}

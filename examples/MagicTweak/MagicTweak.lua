@@ -1,4 +1,5 @@
 -- LuaPatcher example: MagicTweak — global Spell/MagicEffect.
+-- priority: 1 (independent of the gear pipeline)
 --
 -- This shows the writable Magic API added in LuaPatcher:
 --   spell.costOverride / spellType / castingType / delivery / chargeTime / range  (rw)

@@ -6,9 +6,9 @@ Usage:
     invoke build                             configure + build (release-linux)
     
     invoke deploy                            build + deploy the DLL only
-    invoke deploy --copy-example             also copy default example (GearInjection)
+    invoke deploy --copy-example             also copy example(s) (default: GearInjection)
     invoke deploy --copy-all-examples        also copy every distributable example
-    invoke deploy --example NAME             choose which single example to copy (default: GearInjection)
+    invoke deploy --example NAME[,NAME...]   choose which example(s) to copy (default: GearInjection)
     
     invoke format                            format C++ sources with clang-format
 
@@ -471,6 +471,23 @@ def list_examples(c: Context):
         print(f"  - {p.name}: script={script_info} config={cfg_info}")
 
 
+def _clear_deploy_target(mods_folder: str) -> None:
+    """Remove the mod folder so every deploy starts from a clean slate
+    (stale DLLs, removed examples and old scripts never linger)."""
+    target = Path(mods_folder) / MOD_FOLDER_NAME
+    if target.is_dir():
+        count = sum(1 for _ in target.rglob("*"))
+        shutil.rmtree(target)
+        print(f"Deploy: cleared {count} item(s) from {target}")
+    target.mkdir(parents=True, exist_ok=True)
+
+
+def _split_examples(example: str) -> list[str]:
+    """Split a comma/space-separated example list; empty -> default example."""
+    parts = [p.strip() for p in example.replace(",", " ").split()]
+    return parts or [DEFAULT_EXAMPLE]
+
+
 @task
 def deploy(
     c: Context,
@@ -478,13 +495,14 @@ def deploy(
     copy_all_examples: bool = False,
     example: str = DEFAULT_EXAMPLE,
 ):
-    """Build and deploy the mod.
+    """Build and deploy the mod (the LuaPatcher mod folder is cleared first).
 
-    With --copy-example copy a single example (default: GearInjection,
-    use --example NAME to choose).
+    With --copy-example copy the example(s) named by --example
+    (comma/space separated, default: GearInjection).
     With --copy-all-examples copy every distributable example in examples/.
     """
     mods_folder = _mods_folder(c)
+    _clear_deploy_target(mods_folder)
 
     print(f"Building and deploying to: {mods_folder}")
     with c.cd(str(ROOT)):
@@ -502,6 +520,7 @@ def deploy(
         return
 
     if copy_example:
-        _copy_single_example(example, mods_folder)
+        for name in _split_examples(example):
+            _copy_single_example(name, mods_folder)
 
     print("\nDeploy complete")

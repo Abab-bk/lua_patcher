@@ -38,6 +38,8 @@ conditions.
 | `allArmors()` | array of Armor | Every `TESObjectARMO` |
 | `allSpells()` | array of Spell | Every `SpellItem` |
 | `allMagicEffects()` | array of MagicEffect | Every `EffectSetting` |
+| `formList(formOrId)` | FormList | Raises if the form is not a form list |
+| `allFormLists()` | array of FormList | Every `BGSListForm` |
 | `print(...)` | — | Redirected to the plugin log (same formatting as log) |
 
 
@@ -207,6 +209,22 @@ ll.chanceNone = 50
 | `mgef:addKeyword(kwOrId)` | bool | |
 | `mgef:removeKeyword(kwOrId)` | bool | |
 
+## FormList (extends Form)
+
+`tostring(fl)` → `"FormList[{:08X}]"`
+
+| Property | R/W | Type | Notes |
+|---|---|---|---|
+| `numForms` | ro | integer |  |
+
+| Method | Returns | Notes |
+|---|---|---|
+| `fl:forms()` | array of Form | |
+| `fl:add(formOrId)` | bool | |
+| `fl:remove(formOrId)` | bool | |
+| `fl:has(formOrId)` | bool | |
+| `fl:clear()` | — | |
+
 ## Script layout
 
 ```
@@ -214,6 +232,12 @@ Data/SKSE/Plugins/LuaPatcher/Scripts/
   MyMod.lua              # executed at load
   MyMod_config.lua       # NOT executed; loaded via lua_patcher.tryLoadConfig("MyMod")
 ```
+
+Scripts run in priority order: a `-- priority: N` comment (first 512 bytes of the
+file) sets the execution order, lowest first; scripts without a declaration get
+priority 0 and run first. Equal priorities fall back to path order. Example
+pipeline: rebalance stats (10) -> fix keywords (20) -> join tempering sets (30)
+-> inject into leveled lists (40).
 
 Config chunks return a table; `tryLoadConfig` returns it (or nil when the file
 is missing or fails to load). Scripts typically merge it over defaults:

@@ -25,7 +25,7 @@ SRC_DIR = ROOT / "src"
 OUT_PATH = ROOT / "docs" / "API.md"
 
 # Section order in the generated document.
-TYPE_ORDER = ["Form", "Weapon", "Armor", "LeveledList", "Spell", "MagicEffect"]
+TYPE_ORDER = ["Form", "Weapon", "Armor", "LeveledList", "Spell", "MagicEffect", "FormList"]
 
 # Method receiver shown in signatures, per type.
 RECEIVERS = {
@@ -35,6 +35,7 @@ RECEIVERS = {
     "LeveledList": "list",
     "Spell": "spell",
     "MagicEffect": "mgef",
+    "FormList": "fl",
 }
 
 # Hand-maintained one-liners for the lua_patcher module functions.
@@ -54,6 +55,8 @@ MODULE_NOTES = {
     "allSpells": "Every `SpellItem`",
     "allMagicEffects": "Every `EffectSetting`",
     "findLeveledListsContaining": "Snapshot reverse index: lists referencing the form in the game's pristine data (patches made this run are not visible)",
+    "formList": "Raises if the form is not a form list",
+    "allFormLists": "Every `BGSListForm`",
 }
 
 # Hand-maintained return values for the lua_patcher module functions.
@@ -69,6 +72,8 @@ MODULE_RETURNS = {
     "allSpells": "array of Spell",
     "allMagicEffects": "array of MagicEffect",
     "findLeveledListsContaining": "array of LeveledList",
+    "formList": "FormList",
+    "allFormLists": "array of FormList",
 }
 
 # Hand-maintained return values for usertype methods (keyed by "Type.member").
@@ -84,6 +89,10 @@ METHOD_RETURNS = {
     "Spell.removeKeyword": "bool",
     "MagicEffect.addKeyword": "bool",
     "MagicEffect.removeKeyword": "bool",
+    "FormList.add": "bool",
+    "FormList.remove": "bool",
+    "FormList.has": "bool",
+    "FormList.forms": "array of Form",
 }
 
 # Hand-maintained notes for individual properties/methods (per type).
@@ -160,6 +169,12 @@ Data/SKSE/Plugins/LuaPatcher/Scripts/
   MyMod.lua              # executed at load
   MyMod_config.lua       # NOT executed; loaded via lua_patcher.tryLoadConfig("MyMod")
 ```
+
+Scripts run in priority order: a `-- priority: N` comment (first 512 bytes of the
+file) sets the execution order, lowest first; scripts without a declaration get
+priority 0 and run first. Equal priorities fall back to path order. Example
+pipeline: rebalance stats (10) -> fix keywords (20) -> join tempering sets (30)
+-> inject into leveled lists (40).
 
 Config chunks return a table; `tryLoadConfig` returns it (or nil when the file
 is missing or fails to load). Scripts typically merge it over defaults:
@@ -487,6 +502,7 @@ def main() -> int:
         SRC_DIR / "LeveledList.cpp",
         SRC_DIR / "Equipment.cpp",
         SRC_DIR / "Magic.cpp",
+        SRC_DIR / "FormList.cpp",
     ]
     types: dict[str, dict] = {}
     module: list[tuple[str, str, str]] = []  # (cpp function name, lua key, source text)
@@ -504,9 +520,23 @@ def main() -> int:
                 types[t["name"]] = t
 
         target = types.get("LeveledList")
-        for m in re.finditer(r'a_type\[\s*"(\w+)"\s*\]\s*=\s*', text):
+        for m in re.finditer(r'(?:a_type|type)\[\s*"(\w+)"\s*\]\s*=\s*', text):
             val = _tokenize(text[m.end() :])
-            if not val or not target:
+            if not val:
+                continue
+            # the usertype a property belongs to comes from the enclosing
+            # Register* function name, e.g. RegisterFormList -> FormList,
+            # RegisterLeveledListProperties -> LeveledList
+            type_name = ""
+            for fm in re.finditer(r"\bvoid\s+(Register\w+)\s*\(", text):
+                if fm.end() <= m.start():
+                    type_name = fm.group(1)[len("Register") :]
+            for suffix in ("Properties", "Operations", "Mutators"):
+                if type_name.endswith(suffix):
+                    type_name = type_name[: -len(suffix)]
+                    break
+            target = types.get(type_name)
+            if not target:
                 continue
             kind = val[0][0]
             if kind == "call" and val[0][1] == "sol::property":

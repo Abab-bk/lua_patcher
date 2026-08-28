@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cmath>
 #include <format>
+// NOLINTNEXTLINE(readability-duplicate-include) — the PCH-less test build needs it
 #include <string>
 #include <string_view>
 
@@ -55,6 +56,46 @@ namespace ExampleMod
 			return maxVal;
 		}
 		return value;
+	}
+
+	// Parses a "-- priority: N" declaration from the head of a script file.
+	// The marker is "priority" anywhere in `a_head` (convention: a leading
+	// comment); an optional ':' or '=' and whitespace may follow, then an
+	// integer. Missing or malformed declarations yield 0, so scripts without a
+	// priority run first, in path order.
+	[[nodiscard]] inline int ParseScriptPriority(std::string_view a_head) noexcept
+	{
+		constexpr std::string_view kMarker = "priority";
+		const auto pos = a_head.find(kMarker);
+		if (pos == std::string_view::npos) {
+			return 0;
+		}
+
+		std::string_view rest = a_head.substr(pos + kMarker.size());
+		while (!rest.empty() && (rest.front() == ' ' || rest.front() == '\t')) {
+			rest.remove_prefix(1);
+		}
+		if (!rest.empty() && (rest.front() == ':' || rest.front() == '=')) {
+			rest.remove_prefix(1);
+		}
+		while (!rest.empty() && (rest.front() == ' ' || rest.front() == '\t')) {
+			rest.remove_prefix(1);
+		}
+
+		int value = 0;
+		bool any = false;
+		for (const char ch : rest) {
+			if (ch < '0' || ch > '9') {
+				break;
+			}
+			any = true;
+			if (value <= (1'000'000 - (ch - '0')) / 10) {
+				value = (value * 10) + (ch - '0');
+			} else {
+				return 1'000'000;  // cap absurd values
+			}
+		}
+		return any ? value : 0;
 	}
 
 }  // namespace ExampleMod

@@ -8,7 +8,6 @@
 #include <sol/state_view.hpp>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace
 {

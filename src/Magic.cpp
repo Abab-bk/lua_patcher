@@ -239,7 +239,7 @@ namespace
 		}
 	}
 
-	RE::BGSKeyword* CheckKeyword(sol::object a_value)
+	RE::BGSKeyword* CheckKeyword(const sol::object& a_value)
 	{
 		auto* keyword = LuaPatcher::CheckForm(a_value)->As<RE::BGSKeyword>();
 		if (!keyword) {
@@ -290,7 +290,7 @@ namespace LuaPatcher
 					return std::string(SpellTypeName(a_form.form->As<RE::SpellItem>()->data.spellType));
 				},
 				[](LuaSpell& a_form, const std::string& a_value) {
-					RE::MagicSystem::SpellType type;
+					RE::MagicSystem::SpellType type = RE::MagicSystem::SpellType::kSpell;
 					if (!TryParseSpellType(a_value, type)) {
 						throw sol::error{ "invalid spellType (Spell/Disease/Power/LesserPower/Ability/Poison)" };
 					}
@@ -302,7 +302,7 @@ namespace LuaPatcher
 					return std::string(CastingTypeName(a_form.form->As<RE::SpellItem>()->data.castingType));
 				},
 				[](LuaSpell& a_form, const std::string& a_value) {
-					RE::MagicSystem::CastingType type;
+					RE::MagicSystem::CastingType type = RE::MagicSystem::CastingType::kConstantEffect;
 					if (!TryParseCastingType(a_value, type)) {
 						throw sol::error{ "invalid castingType" };
 					}
@@ -314,7 +314,7 @@ namespace LuaPatcher
 					return std::string(DeliveryName(a_form.form->As<RE::SpellItem>()->data.delivery));
 				},
 				[](LuaSpell& a_form, const std::string& a_value) {
-					RE::MagicSystem::Delivery delivery;
+					RE::MagicSystem::Delivery delivery = RE::MagicSystem::Delivery::kSelf;
 					if (!TryParseDelivery(a_value, delivery)) {
 						throw sol::error{ "invalid delivery" };
 					}
@@ -336,11 +336,11 @@ namespace LuaPatcher
 					a_form.form->As<RE::SpellItem>()->data.range = static_cast<float>(a_value);
 				}),
 			"addKeyword",
-			[](LuaSpell& a_form, sol::object a_keyword) {
+			[](LuaSpell& a_form, const sol::object& a_keyword) {
 				return a_form.form->As<RE::SpellItem>()->AddKeyword(CheckKeyword(a_keyword));
 			},
 			"removeKeyword",
-			[](LuaSpell& a_form, sol::object a_keyword) {
+			[](LuaSpell& a_form, const sol::object& a_keyword) {
 				return a_form.form->As<RE::SpellItem>()->RemoveKeyword(CheckKeyword(a_keyword));
 			});
 
@@ -401,8 +401,8 @@ namespace LuaPatcher
 				[](const LuaMagicEffect& a_form) {
 					return std::string(ActorValueName(a_form.form->As<RE::EffectSetting>()->data.associatedSkill));
 				},
-				[](LuaMagicEffect& a_form, std::string a_value) {
-					RE::ActorValue actorValue;
+				[](LuaMagicEffect& a_form, const std::string& a_value) {
+					RE::ActorValue actorValue = RE::ActorValue::kNone;
 					if (!TryParseActorValue(a_value, actorValue)) {
 						throw sol::error{
 							"invalid ActorValue "
@@ -419,8 +419,8 @@ namespace LuaPatcher
 				[](const LuaMagicEffect& a_form) {
 					return std::string(CastingTypeName(a_form.form->As<RE::EffectSetting>()->data.castingType));
 				},
-				[](LuaMagicEffect& a_form, std::string a_value) {
-					RE::MagicSystem::CastingType type;
+				[](LuaMagicEffect& a_form, const std::string& a_value) {
+					RE::MagicSystem::CastingType type = RE::MagicSystem::CastingType::kConstantEffect;
 					if (!TryParseCastingType(a_value, type)) {
 						throw sol::error{ "invalid castingType" };
 					}
@@ -431,8 +431,8 @@ namespace LuaPatcher
 				[](const LuaMagicEffect& a_form) {
 					return std::string(DeliveryName(a_form.form->As<RE::EffectSetting>()->data.delivery));
 				},
-				[](LuaMagicEffect& a_form, std::string a_value) {
-					RE::MagicSystem::Delivery delivery;
+				[](LuaMagicEffect& a_form, const std::string& a_value) {
+					RE::MagicSystem::Delivery delivery = RE::MagicSystem::Delivery::kSelf;
 					if (!TryParseDelivery(a_value, delivery)) {
 						throw sol::error{ "invalid delivery" };
 					}
@@ -448,11 +448,11 @@ namespace LuaPatcher
 				return a_form.form->As<RE::EffectSetting>()->IsDetrimental();
 			}),
 			"addKeyword",
-			[](LuaMagicEffect& a_form, sol::object a_keyword) {
+			[](LuaMagicEffect& a_form, const sol::object& a_keyword) {
 				return a_form.form->As<RE::EffectSetting>()->AddKeyword(CheckKeyword(a_keyword));
 			},
 			"removeKeyword",
-			[](LuaMagicEffect& a_form, sol::object a_keyword) {
+			[](LuaMagicEffect& a_form, const sol::object& a_keyword) {
 				return a_form.form->As<RE::EffectSetting>()->RemoveKeyword(CheckKeyword(a_keyword));
 			});
 

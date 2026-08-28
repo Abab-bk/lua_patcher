@@ -6,7 +6,6 @@ vcpkg_installed/
 dist/
 
 .cache/
-test/
 
 # xwin cache
 .xwin-cache/

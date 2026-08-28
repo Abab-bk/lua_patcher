@@ -8,11 +8,9 @@
 
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <vector>
 
 namespace
 {
@@ -366,9 +364,10 @@ namespace LuaPatcher
 				const auto* keywordForm = a_form.form->As<RE::BGSKeywordForm>();
 				std::vector<LuaForm> result;
 				if (keywordForm) {
-					result.reserve(keywordForm->numKeywords);
-					for (std::uint32_t i = 0; i < keywordForm->numKeywords; ++i) {
-						result.emplace_back(LuaForm{ keywordForm->keywords[i] });
+					const auto keywords = keywordForm->GetKeywords();
+					result.reserve(keywords.size());
+					for (auto* keyword : keywords) {
+						result.emplace_back(LuaForm{ keyword });
 					}
 				}
 				return result;

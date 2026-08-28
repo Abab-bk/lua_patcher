@@ -79,7 +79,9 @@ namespace
 			}
 		}
 
-		entries.push_back({ a_form, static_cast<std::uint16_t>(a_count), static_cast<std::uint16_t>(a_level) });
+		entries.push_back({ .form = a_form,
+			.count = static_cast<std::uint16_t>(a_count),
+			.level = static_cast<std::uint16_t>(a_level) });
 		SortByLevel(entries);
 		WriteEntries(a_list, entries);
 		return true;
@@ -219,7 +221,8 @@ namespace
 	{
 		auto entries = SnapshotEntries(a_list);
 		const auto before = entries.size();
-		entries.erase(std::remove_if(entries.begin(), entries.end(), a_match), entries.end());
+		const auto result = std::ranges::remove_if(entries, a_match);
+		entries.erase(result.begin(), result.end());
 
 		if (entries.size() != before) {
 			SortByLevel(entries);
@@ -343,260 +346,251 @@ namespace
 
 namespace LuaPatcher
 {
-	void RegisterLeveledList(sol::state_view& a_lua)
+	// Registers the read-only properties and the flag/global accessors. Split
+	// from RegisterLeveledListOperations so each registration function stays
+	// below the cognitive-complexity threshold (registration is declarative).
+	void RegisterLeveledListProperties(sol::usertype<LuaLeveledList>& a_type)
 	{
-		a_lua.new_usertype<LuaLeveledList>(
-			"LeveledList", sol::base_classes, sol::bases<LuaForm>(), sol::meta_function::index,
-			sol::readonly_property(UnknownPropertyGetter<LuaLeveledList>), sol::meta_function::to_string,
-			[](const LuaLeveledList& a_list) { return fmt::format("LeveledList[{:08X}]", a_list.form->formID); },
+		a_type["numEntries"] = sol::property(
+			[](const LuaLeveledList& a_list) { return static_cast<lua_Integer>(ToLeveledList(a_list)->numEntries); });
 
-			"numEntries", sol::property([](const LuaLeveledList& a_list) {
-				return static_cast<lua_Integer>(ToLeveledList(a_list)->numEntries);
-			}),
+		a_type["chanceNone"] = sol::property(
+			[](const LuaLeveledList& a_list) { return static_cast<lua_Integer>(ToLeveledList(a_list)->chanceNone); },
+			[](LuaLeveledList& a_list, lua_Integer a_value) {
+				ToLeveledList(a_list)->chanceNone = static_cast<std::int8_t>(a_value);
+			});
 
-			"chanceNone",
-
-			sol::property(
-				[](const LuaLeveledList& a_list) {
-					return static_cast<lua_Integer>(ToLeveledList(a_list)->chanceNone);
-				},
-				[](LuaLeveledList& a_list, lua_Integer a_value) {
-					ToLeveledList(a_list)->chanceNone = static_cast<std::int8_t>(a_value);
-				}),
-
-			"chanceGlobal",
-
-			sol::property(
-				[](const LuaLeveledList& a_list) -> sol::optional<LuaForm> {
-					if (auto* global = ToLeveledList(a_list)->chanceGlobal) {
-						return LuaForm{ global };
-					}
-					return sol::nullopt;
-				},
-
-				[](LuaLeveledList& a_list, const sol::object& a_value) {
-					if (a_value.is<sol::nil_t>()) {
-						ToLeveledList(a_list)->chanceGlobal = nullptr;
-						return;
-					}
-					auto* form = CheckForm(a_value);
-					auto* global = form->As<RE::TESGlobal>();
-					if (!global) {
-						throw sol::error{ "chanceGlobal must be a global form or nil" };
-					}
-					ToLeveledList(a_list)->chanceGlobal = global;
-				}),
-
-			"calculateFromAllLevels",
-			sol::property(
-				[](const LuaLeveledList& a_list) {
-					return HasFlag(a_list, RE::TESLeveledList::Flag::kCalculateFromAllLevelsLTOrEqPCLevel);
-				},
-				[](LuaLeveledList& a_list, bool a_value) {
-					SetFlag(a_list, RE::TESLeveledList::Flag::kCalculateFromAllLevelsLTOrEqPCLevel, a_value);
-				}),
-
-			"calculateForEachItem",
-			sol::property(
-				[](const LuaLeveledList& a_list) {
-					return HasFlag(a_list, RE::TESLeveledList::Flag::kCalculateForEachItemInCount);
-				},
-				[](LuaLeveledList& a_list, bool a_value) {
-					SetFlag(a_list, RE::TESLeveledList::Flag::kCalculateForEachItemInCount, a_value);
-				}),
-
-			"useAll",
-			sol::property(
-				[](const LuaLeveledList& a_list) { return HasFlag(a_list, RE::TESLeveledList::Flag::kUseAll); },
-				[](LuaLeveledList& a_list, bool a_value) {
-					SetFlag(a_list, RE::TESLeveledList::Flag::kUseAll, a_value);
-				}),
-
-			"specialLoot",
-			sol::property(
-				[](const LuaLeveledList& a_list) { return HasFlag(a_list, RE::TESLeveledList::Flag::kSpecialLoot); },
-				[](LuaLeveledList& a_list, bool a_value) {
-					SetFlag(a_list, RE::TESLeveledList::Flag::kSpecialLoot, a_value);
-				}),
-
-			"entries",
-			[](const LuaLeveledList& a_list, sol::this_state a_state) -> sol::object {
-				sol::state_view lua(a_state);
-				auto* list = ToLeveledList(a_list);
-
-				sol::table result = lua.create_table(static_cast<int>(list->entries.size()), 0);
-				lua_Integer index = 1;
-				for (const auto& entry : list->entries) {
-					result[index++] = PushEntry(lua, entry);
+		a_type["chanceGlobal"] = sol::property(
+			[](const LuaLeveledList& a_list) -> sol::optional<LuaForm> {
+				if (auto* global = ToLeveledList(a_list)->chanceGlobal) {
+					return LuaForm{ global };
 				}
-				return result;
+				return sol::nullopt;
 			},
 
-			"add",
-			[](LuaLeveledList& a_list, const sol::object& a_form, const sol::object& a_level,
-				const sol::object& a_count) {
-				auto* listForm = a_list.form;
-				auto* list = ToLeveledList(a_list);
-				auto* form = CheckForm(a_form);
-				auto args = ParseLevelCount(a_level, a_count, "add");
-
-				if (InsertEntry(list, form, args.level, args.count, true)) {
-					logger::debug("LuaPatcher: {:08X} added Form {:08X}", listForm->formID, form->formID);
+			[](LuaLeveledList& a_list, const sol::object& a_value) {
+				if (a_value.is<sol::nil_t>()) {
+					ToLeveledList(a_list)->chanceGlobal = nullptr;
+					return;
 				}
-			},
-
-			"addIfAbsent",
-			[](LuaLeveledList& a_list, const sol::object& a_form, const sol::object& a_level,
-				const sol::object& a_count) {
-				auto* listForm = a_list.form;
-				auto* list = ToLeveledList(a_list);
-				auto* form = CheckForm(a_form);
-				auto args = ParseLevelCount(a_level, a_count, "addIfAbsent");
-
-				const bool added = InsertEntry(list, form, args.level, args.count, false);
-				logger::debug("LuaPatcher: {:08X} addIfAbsent Form {:08X} added: {}", listForm->formID, form->formID,
-					added);
-			},
-
-			"remove",
-			[](LuaLeveledList& a_list, const sol::object& a_form, const sol::object& a_options) {
-				auto* listForm = a_list.form;
-				auto* list = ToLeveledList(a_list);
-				auto* delForm = CheckForm(a_form);
-				auto bounds = ParseBounds(a_options);
-
-				const auto removed = EraseMatching(list, [&](const RE::LEVELED_OBJECT& x) {
-					return x.form == delForm && MatchesBounds(bounds, x.level, x.count);
-				});
-				logger::debug("LuaPatcher: {:08X} removed {} entries of Form {:08X}", listForm->formID, removed,
-					delForm->formID);
-			},
-
-			"removeIf",
-			[](LuaLeveledList& a_list, sol::this_state a_state, const sol::object& a_predicate) {
-				// sol2 skips function-argument type checks in release builds;
-				// validate explicitly so a non-function is a clean Lua error.
-				if (!a_predicate.is<sol::function>() && !a_predicate.is<sol::protected_function>()) {
-					throw sol::error{ "bad argument #2 to 'removeIf' (expected a function)" };
+				auto* form = CheckForm(a_value);
+				auto* global = form->As<RE::TESGlobal>();
+				if (!global) {
+					throw sol::error{ "chanceGlobal must be a global form or nil" };
 				}
-				auto* listForm = a_list.form;
-				auto* list = ToLeveledList(a_list);
-				sol::state_view lua(a_state);
-				sol::protected_function predicate = a_predicate.as<sol::protected_function>();
+				ToLeveledList(a_list)->chanceGlobal = global;
+			});
 
-				std::vector<RE::LEVELED_OBJECT> kept;
-				kept.reserve(list->entries.size());
-				for (const auto& entry : list->entries) {
-					const sol::protected_function_result verdict = predicate(PushEntry(lua, entry));
-					if (!verdict.valid()) {
-						sol::error err = verdict;
-						throw err;
-					}
-					const sol::object value = verdict.get<sol::object>();
-					// Lua truthiness: non-nil and non-false counts as "remove".
-					const bool remove = value.valid() && (!value.is<bool>() || value.as<bool>());
-					if (!remove) {
-						kept.push_back(entry);
-					}
-				}
-
-				if (kept.size() != list->entries.size()) {
-					const auto removed = list->entries.size() - kept.size();
-					SortByLevel(kept);
-					WriteEntries(list, kept);
-					logger::debug("LuaPatcher: {:08X} removeIf removed {} entries", listForm->formID, removed);
-				}
+		a_type["calculateFromAllLevels"] = sol::property(
+			[](const LuaLeveledList& a_list) {
+				return HasFlag(a_list, RE::TESLeveledList::Flag::kCalculateFromAllLevelsLTOrEqPCLevel);
 			},
+			[](LuaLeveledList& a_list, bool a_value) {
+				SetFlag(a_list, RE::TESLeveledList::Flag::kCalculateFromAllLevelsLTOrEqPCLevel, a_value);
+			});
 
-			"removeByKeyword",
-			[](LuaLeveledList& a_list, const sol::object& a_keyword) {
-				auto* listForm = a_list.form;
-				auto* list = ToLeveledList(a_list);
-				auto* form = CheckForm(a_keyword);
-				auto* keyword = form->As<RE::BGSKeyword>();
-				if (!keyword) {
-					throw sol::error{ "expected a keyword form" };
-				}
-
-				const auto removed = EraseMatching(list, [&](const RE::LEVELED_OBJECT& x) {
-					const auto* keyForm = x.form->As<RE::BGSKeywordForm>();
-					return keyForm && keyForm->HasKeyword(keyword);
-				});
-				logger::debug("LuaPatcher: {:08X} removed {} items with keyword {:08X}", listForm->formID, removed,
-					keyword->formID);
+		a_type["calculateForEachItem"] = sol::property(
+			[](const LuaLeveledList& a_list) {
+				return HasFlag(a_list, RE::TESLeveledList::Flag::kCalculateForEachItemInCount);
 			},
+			[](LuaLeveledList& a_list, bool a_value) {
+				SetFlag(a_list, RE::TESLeveledList::Flag::kCalculateForEachItemInCount, a_value);
+			});
 
-			"replace",
-			[](LuaLeveledList& a_list, const sol::object& a_from, const sol::object& a_to) {
-				auto* listForm = a_list.form;
-				auto* list = ToLeveledList(a_list);
-				auto* from = CheckForm(a_from);
-				auto* to = CheckForm(a_to);
+		a_type["useAll"] = sol::property(
+			[](const LuaLeveledList& a_list) { return HasFlag(a_list, RE::TESLeveledList::Flag::kUseAll); },
+			[](LuaLeveledList& a_list, bool a_value) { SetFlag(a_list, RE::TESLeveledList::Flag::kUseAll, a_value); });
 
-				auto entries = SnapshotEntries(list);
-				std::size_t replaced = 0;
-				for (auto& entry : entries) {
-					if (entry.form == from) {
-						entry.form = to;
-						++replaced;
-					}
+		a_type["specialLoot"] = sol::property(
+			[](const LuaLeveledList& a_list) { return HasFlag(a_list, RE::TESLeveledList::Flag::kSpecialLoot); },
+			[](LuaLeveledList& a_list, bool a_value) {
+				SetFlag(a_list, RE::TESLeveledList::Flag::kSpecialLoot, a_value);
+			});
+
+		a_type["entries"] = [](const LuaLeveledList& a_list, sol::this_state a_state) -> sol::object {
+			sol::state_view lua(a_state);
+			auto* list = ToLeveledList(a_list);
+
+			sol::table result = lua.create_table(static_cast<int>(list->entries.size()), 0);
+			lua_Integer index = 1;
+			for (const auto& entry : list->entries) {
+				result[index++] = PushEntry(lua, entry);
+			}
+			return result;
+		};
+	}
+
+	void RegisterLeveledListOperations(sol::usertype<LuaLeveledList>& a_type)
+	{
+		a_type["add"] = [](LuaLeveledList& a_list, const sol::object& a_form, const sol::object& a_level,
+							const sol::object& a_count) {
+			auto* listForm = a_list.form;
+			auto* list = ToLeveledList(a_list);
+			auto* form = CheckForm(a_form);
+			auto args = ParseLevelCount(a_level, a_count, "add");
+
+			if (InsertEntry(list, form, args.level, args.count, true)) {
+				logger::debug("LuaPatcher: {:08X} added Form {:08X}", listForm->formID, form->formID);
+			}
+		};
+
+		a_type["addIfAbsent"] = [](LuaLeveledList& a_list, const sol::object& a_form, const sol::object& a_level,
+									const sol::object& a_count) {
+			auto* listForm = a_list.form;
+			auto* list = ToLeveledList(a_list);
+			auto* form = CheckForm(a_form);
+			auto args = ParseLevelCount(a_level, a_count, "addIfAbsent");
+
+			const bool added = InsertEntry(list, form, args.level, args.count, false);
+			logger::debug("LuaPatcher: {:08X} addIfAbsent Form {:08X} added: {}", listForm->formID, form->formID,
+				added);
+		};
+
+		a_type["remove"] = [](LuaLeveledList& a_list, const sol::object& a_form, const sol::object& a_options) {
+			auto* listForm = a_list.form;
+			auto* list = ToLeveledList(a_list);
+			auto* delForm = CheckForm(a_form);
+			auto bounds = ParseBounds(a_options);
+
+			const auto removed = EraseMatching(list, [&](const RE::LEVELED_OBJECT& x) {
+				return x.form == delForm && MatchesBounds(bounds, x.level, x.count);
+			});
+			logger::debug("LuaPatcher: {:08X} removed {} entries of Form {:08X}", listForm->formID, removed,
+				delForm->formID);
+		};
+
+		a_type["removeIf"] = [](LuaLeveledList& a_list, sol::this_state a_state, const sol::object& a_predicate) {
+			// sol2 skips function-argument type checks in release builds;
+			// validate explicitly so a non-function is a clean Lua error.
+			if (!a_predicate.is<sol::function>() && !a_predicate.is<sol::protected_function>()) {
+				throw sol::error{ "bad argument #2 to 'removeIf' (expected a function)" };
+			}
+			auto* listForm = a_list.form;
+			auto* list = ToLeveledList(a_list);
+			sol::state_view lua(a_state);
+			sol::protected_function predicate = a_predicate.as<sol::protected_function>();
+
+			std::vector<RE::LEVELED_OBJECT> kept;
+			kept.reserve(list->entries.size());
+			for (const auto& entry : list->entries) {
+				const sol::protected_function_result verdict = predicate(PushEntry(lua, entry));
+				if (!verdict.valid()) {
+					sol::error err = verdict;
+					throw sol::error{ err.what() };
 				}
-
-				if (replaced > 0) {
-					SortByLevel(entries);
-					WriteEntries(list, entries);
+				const sol::object value = verdict.get<sol::object>();
+				// Lua truthiness: non-nil and non-false counts as "remove".
+				const bool remove = value.valid() && (!value.is<bool>() || value.as<bool>());
+				if (!remove) {
+					kept.push_back(entry);
 				}
-				logger::debug("LuaPatcher: {:08X} replaced {:08X} with {:08X} ({} entries)", listForm->formID,
-					from->formID, to->formID, replaced);
-			},
+			}
 
-			"multiplyCount",
-			[](LuaLeveledList& a_list, const sol::object& a_form, double a_factor) {
-				auto* listForm = a_list.form;
-				auto* list = ToLeveledList(a_list);
-				auto* form = CheckForm(a_form);
+			if (kept.size() != list->entries.size()) {
+				const auto removed = list->entries.size() - kept.size();
+				SortByLevel(kept);
+				WriteEntries(list, kept);
+				logger::debug("LuaPatcher: {:08X} removeIf removed {} entries", listForm->formID, removed);
+			}
+		};
+	}
 
-				auto entries = SnapshotEntries(list);
-				std::size_t changed = 0;
-				for (auto& entry : entries) {
-					if (entry.form == form) {
-						entry.count =
-							static_cast<std::uint16_t>(std::ceil(static_cast<double>(entry.count) * a_factor));
-						++changed;
-					}
+	void RegisterLeveledListMutators(sol::usertype<LuaLeveledList>& a_type)
+	{
+		a_type["removeByKeyword"] = [](LuaLeveledList& a_list, const sol::object& a_keyword) {
+			auto* listForm = a_list.form;
+			auto* list = ToLeveledList(a_list);
+			auto* form = CheckForm(a_keyword);
+			auto* keyword = form->As<RE::BGSKeyword>();
+			if (!keyword) {
+				throw sol::error{ "expected a keyword form" };
+			}
+
+			const auto removed = EraseMatching(list, [&](const RE::LEVELED_OBJECT& x) {
+				const auto* keyForm = x.form->As<RE::BGSKeywordForm>();
+				return keyForm && keyForm->HasKeyword(keyword);
+			});
+			logger::debug("LuaPatcher: {:08X} removed {} items with keyword {:08X}", listForm->formID, removed,
+				keyword->formID);
+		};
+
+		a_type["replace"] = [](LuaLeveledList& a_list, const sol::object& a_from, const sol::object& a_to) {
+			auto* listForm = a_list.form;
+			auto* list = ToLeveledList(a_list);
+			auto* from = CheckForm(a_from);
+			auto* to = CheckForm(a_to);
+
+			auto entries = SnapshotEntries(list);
+			std::size_t replaced = 0;
+			for (auto& entry : entries) {
+				if (entry.form == from) {
+					entry.form = to;
+					++replaced;
 				}
+			}
 
-				if (changed > 0) {
-					WriteEntries(list, entries);
-				}
-				logger::debug("LuaPatcher: {:08X} multiplied count of {:08X} by {} ({} entries)", listForm->formID,
-					form->formID, a_factor, changed);
-			},
-
-			"has",
-			[](const LuaLeveledList& a_list, const sol::object& a_form) {
-				auto* list = ToLeveledList(a_list);
-				auto* form = CheckForm(a_form);
-				const bool found = std::ranges::any_of(list->entries,
-					[form](const RE::LEVELED_OBJECT& x) { return x.form->formID == form->formID; });
-				return found;
-			},
-
-			"clear",
-			[](LuaLeveledList& a_list) {
-				auto* listForm = a_list.form;
-				auto* list = ToLeveledList(a_list);
-				Clear(list);
-				logger::debug("LuaPatcher: {:08X} cleared", listForm->formID);
-			},
-
-			"sort",
-			[](LuaLeveledList& a_list) {
-				auto* list = ToLeveledList(a_list);
-				auto entries = SnapshotEntries(list);
+			if (replaced > 0) {
 				SortByLevel(entries);
 				WriteEntries(list, entries);
-			});
+			}
+			logger::debug("LuaPatcher: {:08X} replaced {:08X} with {:08X} ({} entries)", listForm->formID, from->formID,
+				to->formID, replaced);
+		};
+
+		a_type["multiplyCount"] = [](LuaLeveledList& a_list, const sol::object& a_form, double a_factor) {
+			auto* listForm = a_list.form;
+			auto* list = ToLeveledList(a_list);
+			auto* form = CheckForm(a_form);
+
+			auto entries = SnapshotEntries(list);
+			std::size_t changed = 0;
+			for (auto& entry : entries) {
+				if (entry.form == form) {
+					entry.count = static_cast<std::uint16_t>(std::ceil(static_cast<double>(entry.count) * a_factor));
+					++changed;
+				}
+			}
+
+			if (changed > 0) {
+				WriteEntries(list, entries);
+			}
+			logger::debug("LuaPatcher: {:08X} multiplied count of {:08X} by {} ({} entries)", listForm->formID,
+				form->formID, a_factor, changed);
+		};
+
+		a_type["has"] = [](const LuaLeveledList& a_list, const sol::object& a_form) {
+			auto* list = ToLeveledList(a_list);
+			auto* form = CheckForm(a_form);
+			const bool found = std::ranges::any_of(list->entries,
+				[form](const RE::LEVELED_OBJECT& x) { return x.form->formID == form->formID; });
+			return found;
+		};
+
+		a_type["clear"] = [](LuaLeveledList& a_list) {
+			auto* listForm = a_list.form;
+			auto* list = ToLeveledList(a_list);
+			Clear(list);
+			logger::debug("LuaPatcher: {:08X} cleared", listForm->formID);
+		};
+
+		a_type["sort"] = [](LuaLeveledList& a_list) {
+			auto* list = ToLeveledList(a_list);
+			auto entries = SnapshotEntries(list);
+			SortByLevel(entries);
+			WriteEntries(list, entries);
+		};
+	}
+
+	void RegisterLeveledList(sol::state_view& a_lua)
+	{
+		sol::usertype<LuaLeveledList> type = a_lua.new_usertype<LuaLeveledList>("LeveledList", sol::base_classes,
+			sol::bases<LuaForm>(), sol::meta_function::index,
+			sol::readonly_property(UnknownPropertyGetter<LuaLeveledList>), sol::meta_function::to_string,
+			[](const LuaLeveledList& a_list) { return fmt::format("LeveledList[{:08X}]", a_list.form->formID); });
+
+		RegisterLeveledListProperties(type);
+		RegisterLeveledListOperations(type);
+		RegisterLeveledListMutators(type);
 
 		sol::table patcher = a_lua["lua_patcher"].get<sol::table>();
 		patcher["leveledList"] = &LeveledListGet;

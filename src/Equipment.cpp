@@ -4,13 +4,12 @@
 #include <RE/B/BGSKeyword.h>
 #include <RE/B/BGSKeywordForm.h>
 #include <RE/T/TESObjectARMO.h>
-#include <RE/T/TESObjectWEAP.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace
 {
@@ -211,7 +210,7 @@ namespace LuaPatcher
 				[](LuaWeapon& a_form, lua_Integer a_value) {
 					auto* weapon = a_form.form->As<RE::TESObjectWEAP>();
 					a_value = std::max<lua_Integer>(a_value, 0);
-					weapon->value = static_cast<std::uint32_t>(a_value);
+					weapon->value = static_cast<std::int32_t>(a_value);
 				}),
 			"weaponType", sol::property([](const LuaWeapon& a_form) {
 				return std::string(WeaponTypeName(a_form.form->As<RE::TESObjectWEAP>()->GetWeaponType()));
@@ -244,7 +243,7 @@ namespace LuaPatcher
 				[](LuaArmor& a_form, double a_value) {
 					auto* armor = a_form.form->As<RE::TESObjectARMO>();
 					a_value = std::max<double>(a_value, 0);
-					armor->armorRating = static_cast<std::uint32_t>(a_value * 100.0 + 0.5);
+					armor->armorRating = static_cast<std::uint32_t>(std::lround(a_value * 100.0));
 				}),
 			"armorType", sol::property([](const LuaArmor& a_form) {
 				const auto* biped = a_form.form->As<RE::BGSBipedObjectForm>();
@@ -280,7 +279,7 @@ namespace LuaPatcher
 				[](LuaArmor& a_form, lua_Integer a_value) {
 					auto* armor = a_form.form->As<RE::TESObjectARMO>();
 					a_value = std::max<lua_Integer>(a_value, 0);
-					armor->value = static_cast<std::uint32_t>(a_value);
+					armor->value = static_cast<std::int32_t>(a_value);
 				}),
 
 			"addKeyword",

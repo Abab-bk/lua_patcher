@@ -124,6 +124,12 @@ else()
                             "$<$<CONFIG:Release>:/INCREMENTAL:NO;/OPT:REF;/OPT:ICF;/DEBUG:FULL>")
     endif()
 
+    # CommonLibSSE-NG propagates MSVC-only flags (/Zc:preprocessor) on its interface;
+    # clang-cl ignores them, so silence the resulting "argument unused" noise.
+    if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        target_compile_options(${PROJECT_NAME} PRIVATE "-clang:-Wno-unused-command-line-argument")
+    endif()
+
     # LTO/IPO — guarded: unconditionally setting IPO causes a fatal error on toolchains that don't support it
     include(CheckIPOSupported)
     check_ipo_supported(RESULT _ipo_supported OUTPUT _ipo_output)

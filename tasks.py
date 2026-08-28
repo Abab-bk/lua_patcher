@@ -11,7 +11,9 @@ Usage:
     invoke deploy --example NAME             choose which single example to copy (default: EquipmentInjection)
     
     invoke format                            format C++ sources with clang-format
-    
+
+    invoke harness                           configure + build + run the Lua binding smoke harness
+
     invoke package                           build (if needed) + create distributable zip
     invoke package --build-dir DIR           use existing build dir instead of building
     invoke package --version X.Y.Z           override version
@@ -218,6 +220,26 @@ def format(c: Context):
             raise Exit(f"{fmt} failed on {f}", code=result.returncode)
 
     print(f"Formatted {len(files)} file(s) with {fmt}")
+
+
+@task
+def harness(c: Context):
+    """Configure, build and run the Lua binding smoke harness (Linux)."""
+    _ensure_root()
+
+    print("Configuring harness...")
+    with c.cd(str(ROOT)):
+        c.run("cmake -S test/harness -B build/harness", echo=True)
+
+    print("Building harness...")
+    with c.cd(str(ROOT)):
+        c.run("cmake --build build/harness", echo=True)
+
+    print("Running harness...")
+    with c.cd(str(ROOT)):
+        c.run("ctest --test-dir build/harness --output-on-failure", echo=True)
+
+    print("\nHarness checks passed")
 
 
 @task

@@ -261,8 +261,8 @@ namespace
 	{
 		sol::state_view lua(a_state);
 		auto* form = LuaPatcher::CheckForm(a_form);
-		if (!form->As<RE::TESLevItem>() && !form->As<RE::TESLevCharacter>()) {
-			throw sol::error{ "form is not a leveled item or leveled character list" };
+		if (!form->As<RE::TESLevItem>() && !form->As<RE::TESLevCharacter>() && !form->As<RE::TESLevSpell>()) {
+			throw sol::error{ "form is not a leveled item, leveled character or leveled spell list" };
 		}
 		return LuaPatcher::PushForm(lua, form);
 	}
@@ -289,8 +289,10 @@ namespace
 		return PushLeveledListArray<RE::TESLevCharacter>(a_state);
 	}
 
-	// Reverse index: formID -> leveled lists (TESLevItem + TESLevCharacter) that
-	// contain an entry referencing it.
+	sol::object AllLeveledSpells(sol::this_state a_state) { return PushLeveledListArray<RE::TESLevSpell>(a_state); }
+
+	// Reverse index: formID -> leveled lists (TESLevItem + TESLevCharacter +
+	// TESLevSpell) that contain an entry referencing it.
 	//
 	// Snapshot semantics: built once per data handler on first call and never
 	// invalidated afterwards -- patches applied *during* this run are not
@@ -313,6 +315,11 @@ namespace
 					}
 				}
 				for (auto* list : dataHandler->GetFormArray<RE::TESLevCharacter>()) {
+					for (const auto& entry : list->entries) {
+						index[entry.form->formID].push_back(list);
+					}
+				}
+				for (auto* list : dataHandler->GetFormArray<RE::TESLevSpell>()) {
 					for (const auto& entry : list->entries) {
 						index[entry.form->formID].push_back(list);
 					}
@@ -596,6 +603,7 @@ namespace LuaPatcher
 		patcher["leveledList"] = &LeveledListGet;
 		patcher["allLeveledItems"] = &AllLeveledItems;
 		patcher["allLeveledCharacters"] = &AllLeveledCharacters;
+		patcher["allLeveledSpells"] = &AllLeveledSpells;
 		patcher["findLeveledListsContaining"] = &FindLeveledListsContaining;
 	}
 }

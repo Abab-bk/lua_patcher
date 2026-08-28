@@ -20,17 +20,24 @@ namespace RE
 
 	enum class FormType : std::uint8_t
 	{
+		GameSetting = 3,
 		MagicEffect = 18,
 		Spell = 22,
 		Enchantment = 25,
 		Armor = 26,
+		Container = 28,
+		Ingredient = 30,
+		Light = 31,
 		FormList = 40,
 		Weapon = 41,
+		NPC = 43,
 		Global = 44,
+		AlchemyItem = 46,
 		Keyword = 47,
 		LeveledItem = 49,
 		LeveledSpell = 51,
 		LeveledNPC = 52,
+		Shout = 119,
 	};
 
 	inline std::string_view FormTypeToString(FormType a_formType) noexcept
@@ -40,6 +47,8 @@ namespace RE
 			return "Keyword";
 		case FormType::Global:
 			return "Global";
+		case FormType::GameSetting:
+			return "GameSetting";
 		case FormType::LeveledItem:
 			return "LeveledItem";
 		case FormType::LeveledSpell:
@@ -58,6 +67,18 @@ namespace RE
 			return "Weapon";
 		case FormType::FormList:
 			return "FormList";
+		case FormType::Ingredient:
+			return "Ingredient";
+		case FormType::AlchemyItem:
+			return "Potion";
+		case FormType::Container:
+			return "Container";
+		case FormType::NPC:
+			return "Actor";
+		case FormType::Light:
+			return "Light";
+		case FormType::Shout:
+			return "Shout";
 		default:
 			return "Unknown";
 		}
@@ -104,6 +125,18 @@ namespace RE
 		[[nodiscard]] constexpr bool any(E2 a_value) const noexcept
 		{
 			return (_impl & static_cast<U>(a_value)) != 0;
+		}
+
+		template <class E2>
+		[[nodiscard]] constexpr bool all(E2 a_value) const noexcept
+		{
+			return (_impl & static_cast<U>(a_value)) == static_cast<U>(a_value);
+		}
+
+		template <class E2>
+		[[nodiscard]] constexpr bool none(E2 a_value) const noexcept
+		{
+			return (_impl & static_cast<U>(a_value)) == 0;
 		}
 
 		friend constexpr bool operator==(EnumSet a_lhs, E a_rhs) noexcept
@@ -260,6 +293,11 @@ namespace RE
 		}
 	};
 
+	// Mirrors RE::TESBoundObject (base of all placeable items; leveled lists
+	// and equipment derive from it, and container entries must be bound objects).
+	class TESBoundObject : public TESForm
+	{};
+
 	class BGSKeyword;
 	class BGSKeywordForm
 	{
@@ -342,6 +380,27 @@ namespace RE
 	};
 
 	class TESGlobal : public TESForm
+	{
+	public:
+		enum class Type
+		{
+			kFloat = 'f',
+			kLong = 'l',
+			kShort = 's'
+		};
+
+		EnumSet<Type, std::uint8_t> type = Type::kFloat;
+		float value = 0.0F;
+	};
+
+	// Mirrors RE::TESWordOfPower (referenced by TESShout variations).
+	class TESWordOfPower : public TESForm
+	{};
+
+	class TESRace : public TESForm
+	{};
+
+	class TESClass : public TESForm
 	{};
 
 	namespace MagicSystem
@@ -400,6 +459,91 @@ namespace RE
 		};
 	}
 
+	class EffectSetting;
+
+	class TESValueForm : public BaseFormComponent
+	{
+	public:
+		std::int32_t value = 0;
+	};
+
+	class TESWeightForm : public BaseFormComponent
+	{
+	public:
+		float weight = 0.0f;
+	};
+
+	// Mirrors RE::Color (used by TESObjectLIGH::OBJ_LIGH).
+	struct Color
+	{
+		std::uint8_t red = 0;
+		std::uint8_t green = 0;
+		std::uint8_t blue = 0;
+		std::uint8_t alpha = 0xFF;
+	};
+
+	// Mirrors RE::Effect (a MagicItem effect slot; real CLib keeps these as
+	// heap Effect objects in BSTArray<Effect*>).
+	struct Effect
+	{
+		struct EffectItem
+		{
+			float magnitude = 0.0F;
+			std::uint32_t area = 0;
+			std::uint32_t duration = 0;
+		};
+		EffectItem effectItem;
+		EffectSetting* baseEffect = nullptr;
+		float cost = 0.0F;
+	};
+
+	// Mirrors RE::MagicItem: the shared base of IngredientItem, AlchemyItem,
+	// EnchantmentItem (and SpellItem/ScrollItem in the real engine).
+	class MagicItem : public TESForm, public BGSKeywordForm
+	{
+	public:
+		std::vector<Effect*> effects;
+	};
+
+	class IngredientItem : public MagicItem, public TESValueForm, public TESWeightForm
+	{
+	public:
+		struct Data
+		{
+			std::int32_t costOverride = 0;
+		};
+		Data data;
+	};
+
+	class AlchemyItem : public MagicItem, public TESWeightForm
+	{
+	public:
+		struct Data
+		{
+			std::int32_t costOverride = 0;
+			std::uint32_t flags = 0;  // bit 1 = kFoodItem, bit 17 = kPoison
+		};
+		Data data;
+
+		[[nodiscard]] bool IsFood() const { return ((data.flags >> 1) & 1) != 0 && !IsPoison(); }
+		[[nodiscard]] bool IsPoison() const { return (data.flags & (1u << 17)) != 0; }
+	};
+
+	class EnchantmentItem : public MagicItem
+	{
+	public:
+		struct Data
+		{
+			std::int32_t costOverride = 0;
+			MagicSystem::CastingType castingType = MagicSystem::CastingType::kConstantEffect;
+			MagicSystem::Delivery delivery = MagicSystem::Delivery::kSelf;
+			std::int32_t chargeOverride = 0;
+			float chargeTime = 0.0F;
+			EnchantmentItem* baseEnchantment = nullptr;
+		};
+		Data data;
+	};
+
 	// Minimal stand-ins for the magic types (field names mirror Magic.cpp usage).
 	class SpellItem : public TESForm, public BGSKeywordForm
 	{
@@ -441,27 +585,12 @@ namespace RE
 		[[nodiscard]] bool IsDetrimental() const { return false; }
 	};
 
-	class TESValueForm : public BaseFormComponent
-	{
-	public:
-		std::int32_t value = 0;
-	};
-
-	class TESWeightForm : public BaseFormComponent
-	{
-	public:
-		float weight = 0.0f;
-	};
-
 	class EnchantmentItem;
 	class TESEnchantableForm : public BaseFormComponent
 	{
 	public:
 		EnchantmentItem* formEnchanting = nullptr;
 	};
-
-	class EnchantmentItem : public TESForm
-	{};
 
 	class TESAttackDamageForm : public BaseFormComponent
 	{
@@ -519,7 +648,7 @@ namespace RE
 	};
 
 	class TESObjectWEAP :
-		public TESForm,
+		public TESBoundObject,
 		public TESValueForm,
 		public TESWeightForm,
 		public TESEnchantableForm,
@@ -559,7 +688,7 @@ namespace RE
 	};
 
 	class TESObjectARMO :
-		public TESForm,
+		public TESBoundObject,
 		public TESValueForm,
 		public TESWeightForm,
 		public TESEnchantableForm,
@@ -599,11 +728,185 @@ namespace RE
 		TESGlobal* chanceGlobal = nullptr;
 	};
 
-	class TESLevItem : public TESForm, public TESLeveledList
+	class TESLevItem : public TESBoundObject, public TESLeveledList
 	{};
 
-	class TESLevCharacter : public TESForm, public TESLeveledList
+	class TESLevCharacter : public TESBoundObject, public TESLeveledList
 	{};
+
+	// Leveled spell lists: same entry layout as TESLevItem/Character (the real
+	// engine stores them in the shared TESLeveledList::entries member).
+	class TESLevSpell : public TESBoundObject, public TESLeveledList
+	{};
+
+	// Mirrors RE::TESContainer (component of TESObjectCONT): heap-allocated
+	// ContainerObject entries with no set-size API, so mutations go through the
+	// engine's Add/RemoveObjectTo/FromContainer methods.
+	struct ContainerObject
+	{
+		TESBoundObject* obj = nullptr;
+		std::int32_t count = 0;
+	};
+
+	class TESContainer : public BaseFormComponent
+	{
+	public:
+		// Mirrors the real engine: a heap array of ContainerObject pointers.
+		std::vector<ContainerObject*> containerObjects;
+		std::uint32_t numContainerObjects = 0;  // mirrors the engine member; keep in sync with the vector
+		bool allowStolenItems = false;
+
+		// Mirrors the real engine methods used by src/Container.cpp
+		// (AddObjectToContainer appends/accumulates, RemoveObjectFromContainer
+		// deletes the first entry whose count matches exactly).
+		void AddObjectToContainer(TESBoundObject* a_object, std::int32_t a_count, TESForm* a_owner)
+		{
+			(void)a_owner;
+			for (auto* entry : containerObjects) {
+				if (entry && entry->obj == a_object) {
+					entry->count += a_count;
+					return;
+				}
+			}
+			containerObjects.push_back(new ContainerObject{ a_object, a_count });
+			numContainerObjects = static_cast<std::uint32_t>(containerObjects.size());
+		}
+
+		bool RemoveObjectFromContainer(TESBoundObject* a_object, std::int32_t a_count)
+		{
+			for (auto it = containerObjects.begin(); it != containerObjects.end(); ++it) {
+				if (*it && (*it)->obj == a_object && (*it)->count == a_count) {
+					containerObjects.erase(it);
+					numContainerObjects = static_cast<std::uint32_t>(containerObjects.size());
+					return true;
+				}
+			}
+			return false;
+		}
+
+		std::int32_t GetObjectCount(const TESBoundObject* a_object) const
+		{
+			std::int32_t count = 0;
+			for (const auto* entry : containerObjects) {
+				if (entry && entry->obj == a_object) {
+					count += entry->count;
+				}
+			}
+			return count;
+		}
+	};
+
+	class TESObjectCONT : public TESForm, public TESContainer
+	{};
+
+	// Mirrors RE::TESRaceForm (component of TESNPC).
+	class TESRaceForm : public BaseFormComponent
+	{
+	public:
+		TESForm* race = nullptr;
+	};
+
+	// NPC_ records cover both NPCs and creatures (creatures are NPC_ records in
+	// Skyrim; there is no separate TESCreature form type).
+	class TESNPC : public TESForm, public TESRaceForm
+	{
+	public:
+		struct Skills
+		{
+			enum
+			{
+				kOneHanded = 0,
+				kTwoHanded = 1,
+				kMarksman = 2,
+				kBlock = 3,
+				kSmithing = 4,
+				kHeavyArmor = 5,
+				kLightArmor = 6,
+				kPickpocket = 7,
+				kLockpicking = 8,
+				kSneak = 9,
+				kAlchemy = 10,
+				kSpeechcraft = 11,
+				kAlteration = 12,
+				kConjuration = 13,
+				kDestruction = 14,
+				kIllusion = 15,
+				kRestoration = 16,
+				kEnchanting = 17,
+				kTotal
+			};
+
+			std::uint8_t values[kTotal]{};
+			std::uint8_t offsets[kTotal]{};
+			std::uint16_t health = 0;
+			std::uint16_t magicka = 0;
+			std::uint16_t stamina = 0;
+		};
+
+		// Mirrors TESActorBaseData::actorData (level lives here in the real
+		// engine; health/magicka/stamina are in playerSkills).
+		struct ActorBaseData
+		{
+			std::uint16_t level = 0;  // 0 = scales with player level
+		};
+
+		Skills playerSkills;
+		ActorBaseData actorData;
+		TESForm* npcClass = nullptr;
+	};
+
+	// Mirrors RE::TESShout: three word-variations, each a word + spell pair.
+	class TESShout : public TESForm
+	{
+	public:
+		struct VariationIDs
+		{
+			enum VariationID : std::uint32_t
+			{
+				kOne = 0,
+				kTwo,
+				kThree,
+				kTotal
+			};
+		};
+		using VariationID = VariationIDs::VariationID;
+
+		struct Variation
+		{
+			TESForm* word = nullptr;
+			TESForm* spell = nullptr;
+			float recoveryTime = 0.0F;
+		};
+		Variation variations[VariationIDs::kTotal]{};
+	};
+
+	// Mirrors RE::TESObjectLIGH (OBJ_LIGH DATA block + FNAM fade).
+	enum class TES_LIGHT_FLAGS : std::uint32_t
+	{
+		kNone = 0,
+		kDynamic = 1 << 0,
+		kCanCarry = 1 << 1,
+		kNegative = 1 << 2,
+		kFlicker = 1 << 3,
+		kOffByDefault = 1 << 5,
+	};
+
+	class TESObjectLIGH : public TESForm
+	{
+	public:
+		struct OBJ_LIGH
+		{
+			std::uint32_t radius = 0;
+			Color color;
+			EnumSet<TES_LIGHT_FLAGS, std::uint32_t> flags;
+			float fallofExponent = 1.0F;
+			float fov = 0.0F;
+		};
+		OBJ_LIGH data;
+		float fade = 1.0F;
+
+		[[nodiscard]] bool CanBeCarried() const { return data.flags.all(TES_LIGHT_FLAGS::kCanCarry); }
+	};
 
 	class TESDataHandler
 	{

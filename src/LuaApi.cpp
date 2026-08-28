@@ -260,6 +260,7 @@ namespace LuaPatcher
 		switch (a_form->GetFormType()) {
 		case RE::FormType::LeveledItem:
 		case RE::FormType::LeveledNPC:
+		case RE::FormType::LeveledSpell:
 			return sol::make_object(a_lua, LuaLeveledList{ a_form });
 		case RE::FormType::Weapon:
 			return sol::make_object(a_lua, LuaWeapon{ a_form });
@@ -271,6 +272,22 @@ namespace LuaPatcher
 			return sol::make_object(a_lua, LuaMagicEffect{ a_form });
 		case RE::FormType::FormList:
 			return sol::make_object(a_lua, LuaFormList{ a_form });
+		case RE::FormType::Ingredient:
+			return sol::make_object(a_lua, LuaIngredient{ a_form });
+		case RE::FormType::AlchemyItem:
+			return sol::make_object(a_lua, LuaPotion{ a_form });
+		case RE::FormType::Enchantment:
+			return sol::make_object(a_lua, LuaEnchantment{ a_form });
+		case RE::FormType::Container:
+			return sol::make_object(a_lua, LuaContainer{ a_form });
+		case RE::FormType::NPC:
+			return sol::make_object(a_lua, LuaActor{ a_form });
+		case RE::FormType::Global:
+			return sol::make_object(a_lua, LuaGlobal{ a_form });
+		case RE::FormType::Shout:
+			return sol::make_object(a_lua, LuaShout{ a_form });
+		case RE::FormType::Light:
+			return sol::make_object(a_lua, LuaLight{ a_form });
 		default:
 			return sol::make_object(a_lua, LuaForm{ a_form });
 		}

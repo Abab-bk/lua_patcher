@@ -129,6 +129,13 @@ namespace LuaPatcher
 		RegisterEquipment(lua);
 		RegisterMagic(lua);
 		RegisterFormList(lua);
+		RegisterAlchemy(lua);
+		RegisterEnchantment(lua);
+		RegisterContainer(lua);
+		RegisterActors(lua);
+		RegisterWorld(lua);
+		RegisterShout(lua);
+		RegisterLight(lua);
 
 		for (const auto& [priority, script] : scripts) {
 			logger::info("LuaPatcher: running script '{}' (priority {})", script.generic_string(), priority);

@@ -25,7 +25,23 @@ SRC_DIR = ROOT / "src"
 OUT_PATH = ROOT / "docs" / "API.md"
 
 # Section order in the generated document.
-TYPE_ORDER = ["Form", "Weapon", "Armor", "LeveledList", "Spell", "MagicEffect", "FormList"]
+TYPE_ORDER = [
+    "Form",
+    "Weapon",
+    "Armor",
+    "LeveledList",
+    "Spell",
+    "MagicEffect",
+    "Enchantment",
+    "Ingredient",
+    "Potion",
+    "Container",
+    "Actor",
+    "Shout",
+    "Light",
+    "Global",
+    "FormList",
+]
 
 # Method receiver shown in signatures, per type.
 RECEIVERS = {
@@ -35,6 +51,14 @@ RECEIVERS = {
     "LeveledList": "list",
     "Spell": "spell",
     "MagicEffect": "mgef",
+    "Enchantment": "enchantment",
+    "Ingredient": "ingredient",
+    "Potion": "potion",
+    "Container": "container",
+    "Actor": "actor",
+    "Shout": "shout",
+    "Light": "light",
+    "Global": "global",
     "FormList": "fl",
 }
 
@@ -47,13 +71,22 @@ MODULE_NOTES = {
     "getForm": 'Resolves `"Mod.esm|000123"` / EditorID; never raises',
     "isPluginInstalled": "Is the plugin in the load order",
     "tryLoadConfig": "Loads sibling `Scripts/<name>_config.lua`; nil if missing/failed; raises on invalid names",
-    "leveledList": "Raises if the form is not a leveled item/character list",
+    "leveledList": "Raises if the form is not a leveled item/character/spell list",
     "allLeveledItems": "Every `TESLevItem`",
     "allLeveledCharacters": "Every `TESLevCharacter`",
+    "allLeveledSpells": "Every `TESLevSpell`",
     "allWeapons": "Every `TESObjectWEAP`",
     "allArmors": "Every `TESObjectARMO`",
     "allSpells": "Every `SpellItem`",
     "allMagicEffects": "Every `EffectSetting`",
+    "allIngredients": "Every `IngredientItem`",
+    "allPotions": "Every `AlchemyItem` (potions, poisons and food)",
+    "allEnchantments": "Every `EnchantmentItem`",
+    "allContainers": "Every `TESObjectCONT`",
+    "allActors": "Every `TESNPC` (NPC_ records; covers creatures)",
+    "allGlobals": "Every `TESGlobal`",
+    "allShouts": "Every `TESShout`",
+    "allLights": "Every `TESObjectLIGH`",
     "findLeveledListsContaining": "Snapshot reverse index: lists referencing the form in the game's pristine data (patches made this run are not visible)",
     "formList": "Raises if the form is not a form list",
     "allFormLists": "Every `BGSListForm`",
@@ -67,10 +100,19 @@ MODULE_RETURNS = {
     "leveledList": "LeveledList",
     "allLeveledItems": "array of LeveledList",
     "allLeveledCharacters": "array of LeveledList",
+    "allLeveledSpells": "array of LeveledList",
     "allWeapons": "array of Weapon",
     "allArmors": "array of Armor",
     "allSpells": "array of Spell",
     "allMagicEffects": "array of MagicEffect",
+    "allIngredients": "array of Ingredient",
+    "allPotions": "array of Potion",
+    "allEnchantments": "array of Enchantment",
+    "allContainers": "array of Container",
+    "allActors": "array of Actor",
+    "allGlobals": "array of Global",
+    "allShouts": "array of Shout",
+    "allLights": "array of Light",
     "findLeveledListsContaining": "array of LeveledList",
     "formList": "FormList",
     "allFormLists": "array of FormList",
@@ -89,6 +131,27 @@ METHOD_RETURNS = {
     "Spell.removeKeyword": "bool",
     "MagicEffect.addKeyword": "bool",
     "MagicEffect.removeKeyword": "bool",
+    "Ingredient.setEffects": "—",
+    "Ingredient.addEffect": "index",
+    "Ingredient.effects": "array of effect snapshots",
+    "Potion.setEffects": "—",
+    "Potion.addEffect": "index",
+    "Potion.effects": "array of effect snapshots",
+    "Enchantment.setEffects": "—",
+    "Enchantment.addEffect": "index",
+    "Enchantment.effects": "array of effect snapshots",
+    "Container.setContents": "—",
+    "Container.contents": "array of entry snapshots",
+    "Container.addItem": "—",
+    "Container.removeItem": "bool",
+    "Container.has": "bool",
+    "Actor.skills": "array of skill snapshots",
+    "Actor.setSkill": "—",
+    "Shout.setVariation": "—",
+    "Shout.setVariations": "—",
+    "Shout.variations": "array of variation snapshots",
+    "Shout.word": "Form or nil",
+    "Shout.spell": "Form or nil",
     "FormList.add": "bool",
     "FormList.remove": "bool",
     "FormList.has": "bool",
@@ -109,6 +172,46 @@ MEMBER_NOTES = {
     "Form.enchantment": "The enchantment form",
     "Form.keywords": "As form objects",
     "Form.hasKeyword": "Checks the keyword form",
+    "Global.value": "The global's float value",
+    "Global.globalType": "Float/Long/Short",
+    "Container.numObjects": "Entry count",
+    "Container.allowStolenItems": "Whether looted items are flagged stolen",
+    "Ingredient.costOverride": "Explicit value (0 = auto)",
+    "Potion.costOverride": "Explicit value (0 = auto)",
+    "Potion.isPoison": "Poison flag",
+    "Potion.isFood": "Food flag",
+    "Enchantment.costOverride": "Explicit value (0 = auto)",
+    "Enchantment.chargeOverride": "Explicit charge amount (0 = auto)",
+    "Enchantment.chargeTime": "Charge time in seconds",
+    "Enchantment.castingType": 'ConstantEffect/FireAndForget/Concentration/Scroll',
+    "Enchantment.delivery": 'Self/Touch/Aimed/TargetActor/TargetLocation',
+    "Enchantment.baseEnchantment": "The base enchantment form",
+    "Actor.level": "0 = scales with player level",
+    "Actor.health": "Base health",
+    "Actor.magicka": "Base magicka",
+    "Actor.stamina": "Base stamina",
+    "Actor.race": "The actor's race",
+    "Actor.npcClass": "The actor's class",
+    "Actor.setSkill": "By name or 1..18 index",
+    "Shout.word": "Word of power at variation index (1..3)",
+    "Shout.spell": "Spell at variation index (1..3)",
+    "Light.radius": "In game units",
+    "Light.color": "Table `{ r, g, b }` with 0..255 channels",
+    "Light.fov": "Spotlight field of view",
+    "Light.falloff": "Light falloff exponent",
+    "Light.fade": "FNAM fade value",
+    "Light.canCarry": "Can be picked up",
+    "Light.dynamic": "Dynamic light flag",
+    "Ingredient.effects": "Up to 4 effect slots",
+    "Potion.effects": "Effect slots",
+    "Enchantment.effects": "Effect slots",
+    "Shout.variations": "3 entries `{ word, spell, recoveryTime }`",
+    "Shout.setVariation": "Missing fields keep the current variation's values",
+    "Shout.setVariations": "At most 3 entries; missing fields keep current values",
+    "Container.contents": "Entry snapshots `{ form, count }`",
+    "Container.setContents": "Replaces all contents",
+    "Container.addItem": "Appends or accumulates the count",
+    "Container.removeItem": "Removes every entry of the form",
 }
 
 # Extra prose injected after the LeveledList section.
@@ -399,13 +502,17 @@ def infer_type(getter: str, setter: str) -> str:
         return "array of Form"
     if "std::vector<std::string>" in g:
         return "array of string"
+    if "PushColor" in g:
+        return "table { r, g, b }"
     if "static_cast<lua_Integer>" in g:
         return "integer"
     if "std::string(" in g or "FormToIdentifier" in g:
         return "string"
     if "HasFlag" in g:
         return "bool"
-    if re.search(r"\b(IsMelee|IsRanged|IsBow|IsStaff|IsCrossbow|GetPlayable|IsHostile|IsDetrimental)\(", g):
+    if re.search(r"\b(IsMelee|IsRanged|IsBow|IsStaff|IsCrossbow|GetPlayable|IsHostile|IsDetrimental|IsPoison|IsFood|CanBeCarried)\(", g):
+        return "bool"
+    if "flags.all(" in g or "flags.any(" in g or "flags.none(" in g:
         return "bool"
     if "== 0" in g or "!= 0" in g:
         return "bool"
@@ -503,6 +610,13 @@ def main() -> int:
         SRC_DIR / "Equipment.cpp",
         SRC_DIR / "Magic.cpp",
         SRC_DIR / "FormList.cpp",
+        SRC_DIR / "Alchemy.cpp",
+        SRC_DIR / "Enchantment.cpp",
+        SRC_DIR / "Container.cpp",
+        SRC_DIR / "Actors.cpp",
+        SRC_DIR / "World.cpp",
+        SRC_DIR / "Shout.cpp",
+        SRC_DIR / "Light.cpp",
     ]
     types: dict[str, dict] = {}
     module: list[tuple[str, str, str]] = []  # (cpp function name, lua key, source text)
@@ -592,12 +706,18 @@ def main() -> int:
         if tname == "Form":
             lines.append("## Form (base type)")
             lines.append("")
-            lines.append("Weapon, Armor, LeveledList, Spell and MagicEffect objects inherit these.")
+            lines.append(
+                "Weapon, Armor, LeveledList, Spell, MagicEffect, Enchantment, Ingredient, Potion, Container, "
+                "Actor, Shout, Light and Global objects inherit these."
+            )
             if t["tostring"]:
                 lines.append("")
                 lines.append(f"`tostring(form)` → `\"{esc(t['tostring'])}\"`")
         else:
-            lines.append(f"## {tname} (extends {t['extends'].removeprefix('Lua')})")
+            if t["extends"]:
+                lines.append(f"## {tname} (extends {t['extends'].removeprefix('Lua')})")
+            else:
+                lines.append(f"## {tname}")
             if t["tostring"]:
                 lines.append("")
                 lines.append(f"`tostring({RECEIVERS.get(tname, 'x')})` → `\"{esc(t['tostring'])}\"`")

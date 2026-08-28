@@ -237,6 +237,83 @@ int main()
 	lootLists[0]->entries.push_back(MakeEntry(assignedArmor, 1, 1));
 	lootLists[0]->numEntries = 1;
 
+	// --- Tier-1 randomizer world: alchemy, enchantment, containers, actors,
+	//     shouts, lights, globals, game settings and leveled spells ---------
+	auto* race = AddForm<RE::TESRace>(0x03006000, RE::FormType::Keyword, "GearRace", "Gear Race", gearMod);
+	auto* npcClass = AddForm<RE::TESClass>(0x03006001, RE::FormType::Keyword, "GearClass", "Gear Class", gearMod);
+
+	auto* ingredient =
+		AddForm<RE::IngredientItem>(0x03007000, RE::FormType::Ingredient, "GearIngredient", "Gear Ingredient", gearMod);
+	ingredient->data.costOverride = 15;
+	ingredient->effects = {
+		new RE::Effect(),
+		new RE::Effect(),
+	};
+	ingredient->effects[0]->baseEffect = mgef;
+	ingredient->effects[0]->effectItem.magnitude = 10.0F;
+	ingredient->effects[0]->effectItem.duration = 30;
+	ingredient->effects[0]->cost = 5.0F;
+	ingredient->effects[1]->baseEffect = mgef;
+	ingredient->effects[1]->effectItem.magnitude = 5.0F;
+
+	auto* potion =
+		AddForm<RE::AlchemyItem>(0x03007001, RE::FormType::AlchemyItem, "GearPotion", "Gear Potion", gearMod);
+	potion->data.costOverride = 40;
+	potion->data.flags = 1u << 17;  // kPoison
+	potion->effects = { new RE::Effect() };
+	potion->effects[0]->baseEffect = mgef;
+	potion->effects[0]->effectItem.magnitude = 25.0F;
+
+	auto* enchant2 =
+		AddForm<RE::EnchantmentItem>(0x03007002, RE::FormType::Enchantment, "GearEnch2", "Gear Ench 2", gearMod);
+	enchant2->data.costOverride = 500;
+	enchant2->data.chargeOverride = 1200;
+	enchant2->data.chargeTime = 3.0F;
+	enchant2->data.castingType = RE::MagicSystem::CastingType::kConstantEffect;
+	enchant2->effects = { new RE::Effect() };
+	enchant2->effects[0]->baseEffect = mgef;
+	enchant2->effects[0]->effectItem.magnitude = 40.0F;
+	enchant2->effects[0]->cost = 100.0F;
+
+	auto* container =
+		AddForm<RE::TESObjectCONT>(0x03007003, RE::FormType::Container, "GearChestBox", "Gear Chest Box", gearMod);
+	container->AddObjectToContainer(sword, 1, nullptr);
+	container->AddObjectToContainer(chest, 2, nullptr);
+
+	auto* npc = AddForm<RE::TESNPC>(0x03007004, RE::FormType::NPC, "GearBandit", "Gear Bandit", gearMod);
+	npc->actorData.level = 10;
+	npc->playerSkills.health = 100;
+	npc->playerSkills.magicka = 50;
+	npc->playerSkills.stamina = 75;
+	npc->playerSkills.values[RE::TESNPC::Skills::kOneHanded] = 40;
+	npc->playerSkills.values[RE::TESNPC::Skills::kDestruction] = 25;
+	npc->race = race;
+	npc->npcClass = npcClass;
+
+	auto* levSpell =
+		AddForm<RE::TESLevSpell>(0x03007005, RE::FormType::LeveledSpell, "GearLevSpell", "Gear Lev Spell", gearMod);
+	levSpell->entries = { MakeEntry(spell, 1, 1) };
+	levSpell->numEntries = 1;
+
+	auto* word1 = AddForm<RE::TESWordOfPower>(0x03007006, RE::FormType::Keyword, "GearWord1", "Gear Word 1", gearMod);
+	auto* word2 = AddForm<RE::TESWordOfPower>(0x03007007, RE::FormType::Keyword, "GearWord2", "Gear Word 2", gearMod);
+	auto* shoutSpell =
+		AddForm<RE::SpellItem>(0x03007008, RE::FormType::Spell, "GearShoutSpell", "Gear Shout Spell", gearMod);
+	auto* shout = AddForm<RE::TESShout>(0x03007009, RE::FormType::Shout, "GearShout", "Gear Shout", gearMod);
+	shout->variations[0] = { word1, shoutSpell, 30.0F };
+	shout->variations[1] = { word2, nullptr, 40.0F };
+
+	auto* light = AddForm<RE::TESObjectLIGH>(0x0300700A, RE::FormType::Light, "GearLight", "Gear Light", gearMod);
+	light->data.radius = 256;
+	light->data.color = { 255, 128, 0 };
+	light->data.fov = 60.0F;
+	light->data.fallofExponent = 1.5F;
+	light->fade = 2.0F;
+	light->data.flags = RE::TES_LIGHT_FLAGS::kCanCarry;
+
+	global->value = 3.5F;
+	global->type = RE::TESGlobal::Type::kLong;
+
 	// --- Lua state ------------------------------------------------------
 	sol::state lua;
 	// sol2 prints C++ exceptions to stderr before converting them to Lua
@@ -252,6 +329,13 @@ int main()
 	LuaPatcher::RegisterEquipment(lua);
 	LuaPatcher::RegisterMagic(lua);
 	LuaPatcher::RegisterFormList(lua);
+	LuaPatcher::RegisterAlchemy(lua);
+	LuaPatcher::RegisterEnchantment(lua);
+	LuaPatcher::RegisterContainer(lua);
+	LuaPatcher::RegisterActors(lua);
+	LuaPatcher::RegisterWorld(lua);
+	LuaPatcher::RegisterShout(lua);
+	LuaPatcher::RegisterLight(lua);
 
 	// --- core API tests -------------------------------------------------
 	DoString(lua, R"LUA(
@@ -574,8 +658,181 @@ mgef.baseCost = 75
 assert(mgef.baseCost == 75)
 assert(tostring(mgef) == "MagicEffect[03005001]", "magic effect tostring")
 
-assert(#lua_patcher.allSpells() == 1)
-assert(#lua_patcher.allMagicEffects() == 1)
+assert(#lua_patcher.allSpells() == 2)  -- GearSpell + GearShoutSpell
+	assert(#lua_patcher.allMagicEffects() == 1)
+)LUA");
+
+	// --- alchemy / enchantment / containers / actors / shouts / lights / worlds ----
+	DoString(lua, R"LUA(
+-- ingredient: effect slots read/write/append/clear
+local ing = lua_patcher.getForm("GearIngredient")
+assert(ing ~= nil and ing.type == "Ingredient")
+assert(ing.costOverride == 15)
+assert(tostring(ing) == "Ingredient[03007000]", "ingredient tostring")
+local effs = ing:effects()
+assert(#effs == 2)
+assert(effs[1].baseEffect.editorId == "GearMgef")
+assert(effs[1].magnitude == 10 and effs[1].duration == 30 and effs[1].cost == 5)
+assert(effs[2].magnitude == 5 and effs[2].area == 0)
+ing:addEffect("GearMgef", { magnitude = 99, duration = 7 })
+assert(#ing:effects() == 3)
+assert(ing:effects()[3].magnitude == 99 and ing:effects()[3].duration == 7)
+ing:clearEffects()
+assert(#ing:effects() == 0)
+ing:setEffects({
+  { baseEffect = "GearMgef", magnitude = 1, area = 2, duration = 3, cost = 4 },
+  { baseEffect = "GearMgef", magnitude = 8 },
+})
+local restored = ing:effects()
+assert(#restored == 2 and restored[1].area == 2 and restored[1].duration == 3 and restored[1].cost == 4)
+assert(restored[2].magnitude == 8)
+ing.costOverride = 30
+assert(ing.costOverride == 30)
+local ok, err = pcall(function() ing:setEffects({ { baseEffect = "GearSword" } }) end)
+assert(not ok, "non-magic-effect baseEffect must fail")
+assert(#ing:effects() == 2, "failed setEffects leaves effects untouched")
+assert(#lua_patcher.allIngredients() == 1)
+
+-- potion: poison/food flags + effects
+local potion = lua_patcher.getForm("GearPotion")
+assert(potion ~= nil and potion.type == "Potion")
+assert(potion.isPoison == true and potion.isFood == false)
+assert(tostring(potion) == "Potion[03007001]", "potion tostring")
+assert(#potion:effects() == 1 and potion:effects()[1].magnitude == 25)
+potion:setEffects({ { baseEffect = "GearMgef", duration = 60 } })
+assert(potion:effects()[1].duration == 60)
+assert(#lua_patcher.allPotions() == 1)
+
+-- enchantment: charge + effects + casting type
+local ench = lua_patcher.getForm("GearEnch2")
+assert(ench ~= nil and ench.type == "Enchantment")
+assert(ench.costOverride == 500 and ench.chargeOverride == 1200)
+assert(math.abs(ench.chargeTime - 3) < 0.001)
+assert(ench.castingType == "ConstantEffect")
+assert(tostring(ench) == "Enchantment[03007002]", "enchantment tostring")
+assert(#ench:effects() == 1 and ench:effects()[1].magnitude == 40 and ench:effects()[1].cost == 100)
+ench.castingType = "FireAndForget"
+assert(ench.castingType == "FireAndForget")
+ench.delivery = "Aimed"
+assert(ench.delivery == "Aimed")
+local ok, err = pcall(function() ench.castingType = "Nope" end)
+assert(not ok, "invalid enchantment castingType must fail")
+assert(#lua_patcher.allEnchantments() == 2)
+
+-- container: contents read/write/add/remove
+local cont = lua_patcher.getForm("GearChestBox")
+assert(cont ~= nil and cont.type == "Container")
+assert(cont.numObjects == 2)
+assert(tostring(cont) == "Container[03007003]", "container tostring")
+local contents = cont:contents()
+assert(contents[1].form.editorId == "GearSword" and contents[1].count == 1)
+assert(contents[2].form.editorId == "GearChest" and contents[2].count == 2)
+assert(cont:has("GearSword") == true and cont:has("GearBow") == false)
+cont:addItem("GearBow", 3)
+assert(cont.numObjects == 3 and cont:has("GearBow") == true)
+assert(cont:removeItem("GearBow") == true and cont:has("GearBow") == false)
+assert(cont:removeItem("GearBow") == false)
+cont:setContents({ { form = "GearHelmet", count = 4 } })
+assert(cont.numObjects == 1)
+local only = cont:contents()
+assert(only[1].form.editorId == "GearHelmet" and only[1].count == 4)
+cont:addItem("GearSword")
+assert(cont:contents()[2].form.editorId == "GearSword" and cont:contents()[2].count == 1)
+cont:clearContents()
+assert(cont.numObjects == 0)
+local ok, err = pcall(function() cont:addItem("MockKeyword") end)
+assert(not ok, "non-bound object in container must fail")
+assert(#lua_patcher.allContainers() == 1)
+
+-- actor: level, attributes, skills, race/class
+local actor = lua_patcher.getForm("GearBandit")
+assert(actor ~= nil and actor.type == "Actor")
+assert(actor.level == 10)
+assert(actor.health == 100 and actor.magicka == 50 and actor.stamina == 75)
+assert(tostring(actor) == "Actor[03007004]", "actor tostring")
+assert(actor.race.editorId == "GearRace")
+assert(actor.npcClass.editorId == "GearClass")
+local skills = actor:skills()
+assert(#skills == 18)
+assert(skills[1].name == "OneHanded" and skills[1].value == 40)
+assert(skills[15].name == "Destruction" and skills[15].value == 25)
+actor:setSkill("Destruction", 60)
+assert(actor:skills()[15].value == 60)
+actor:setSkill(1, 55)
+assert(actor:skills()[1].value == 55)
+actor.level = 25
+actor.health = 200
+assert(actor.level == 25 and actor.health == 200)
+local ok, err = pcall(function() actor:setSkill("Nope", 1) end)
+assert(not ok, "unknown skill name must fail")
+assert(#lua_patcher.allActors() == 1)
+
+-- leveled spells: same API as leveled items
+local lvspell = lua_patcher.leveledList("GearLevSpell")
+assert(lvspell.numEntries == 1)
+assert(lvspell:entries()[1].form.editorId == "GearSpell" and lvspell:entries()[1].level == 1)
+lvspell:add("GearShoutSpell", 5, 1)
+assert(lvspell.numEntries == 2)
+lvspell:clear()
+assert(lvspell.numEntries == 0)
+assert(#lua_patcher.allLeveledSpells() == 1)
+
+-- shout: variations read/partial-write/full-write
+local shout = lua_patcher.getForm("GearShout")
+assert(shout ~= nil and shout.type == "Shout")
+assert(tostring(shout) == "Shout[03007009]", "shout tostring")
+local variations = shout:variations()
+assert(#variations == 3)
+assert(variations[1].word.editorId == "GearWord1" and variations[1].spell.editorId == "GearShoutSpell")
+assert(math.abs(variations[1].recoveryTime - 30) < 0.001)
+assert(variations[2].word.editorId == "GearWord2" and variations[2].spell == nil)
+assert(variations[3].spell == nil)
+assert(shout:word(1).editorId == "GearWord1")
+assert(shout:spell(1).editorId == "GearShoutSpell")
+assert(shout:spell(2) == nil)
+shout:setVariation(2, { spell = "GearShoutSpell", recoveryTime = 45 })
+assert(shout:spell(2).editorId == "GearShoutSpell")
+assert(shout:variations()[2].recoveryTime == 45)
+shout:setVariations({
+  { spell = "GearShoutSpell" },
+  { spell = "GearShoutSpell", recoveryTime = 50 },
+  { spell = "GearShoutSpell" },
+})
+local all = shout:variations()
+assert(all[1].spell.editorId == "GearShoutSpell" and all[2].recoveryTime == 50)
+assert(all[3].spell.editorId == "GearShoutSpell")
+local ok, err = pcall(function() shout:setVariation(4, {}) end)
+assert(not ok, "variation index out of range must fail")
+local ok, err = pcall(function() shout:setVariation(1, { spell = "GearSword" }) end)
+assert(not ok, "non-spell variation spell must fail")
+assert(#lua_patcher.allShouts() == 1)
+
+-- light: radius/color/fov/falloff/fade/flags
+local light = lua_patcher.getForm("GearLight")
+assert(light ~= nil and light.type == "Light")
+assert(light.radius == 256)
+assert(light.color.r == 255 and light.color.g == 128 and light.color.b == 0)
+assert(math.abs(light.fov - 60) < 0.001)
+assert(math.abs(light.falloff - 1.5) < 0.001)
+assert(math.abs(light.fade - 2) < 0.001)
+assert(light.canCarry == true and light.dynamic == false)
+light.radius = 512
+light.color = { r = 0, g = 255, b = 255 }
+light.fov = 90
+assert(light.radius == 512)
+assert(light.color.g == 255 and light.color.b == 255)
+local ok, err = pcall(function() light.color = { r = 999 } end)
+assert(not ok, "color channel out of range must fail")
+assert(#lua_patcher.allLights() == 1)
+
+-- globals
+local g = lua_patcher.getForm("MockGlobal")
+assert(g ~= nil and g.type == "Global")
+assert(math.abs(g.value - 3.5) < 0.001)
+assert(g.globalType == "Long")
+g.value = 7.25
+assert(math.abs(g.value - 7.25) < 0.001)
+assert(#lua_patcher.allGlobals() == 2)  -- MockGlobal + MockLightGlobal
 )LUA");
 
 	// --- pure-logic priority parser ---------------------------------------
@@ -868,6 +1125,147 @@ llChar:clear()
 		Check(llMain->numEntries == 1, "script runner: chain left exactly one entry");
 		Check(llMain->entries[0].form == formD, "script runner: last-priority marker survives");
 		Check(llMain->entries[0].form != formE, "script runner: config file not executed");
+
+		fs::remove_all("Data");
+	}
+
+	// --- EverythingRandomizer example -------------------------------------
+	// Deterministic layout: same seed -> same world. Runs through DoString so
+	// config files in the temporary Data/ dir drive the different scenarios.
+	{
+		namespace fs = std::filesystem;
+		const fs::path scriptsDir = "Data/SKSE/Plugins/LuaPatcher/Scripts";
+		fs::remove_all("Data");
+		fs::create_directories(scriptsDir);
+
+		// empty leftover lists from earlier examples so the pools are exact
+		for (auto* list : RE::TESDataHandler::MockForms<RE::TESLevItem>()) {
+			if (list->editorId == "ExampleChest") {
+				list->entries.clear();
+				list->numEntries = 0;
+			}
+		}
+		llChar->entries.clear();
+		llChar->numEntries = 0;
+		for (auto* list : lootLists) {
+			list->entries.clear();
+			list->numEntries = 0;
+		}
+
+		// controlled world: Keyword x4 in llMain, Armor x3 in list 0, Weapon x3 in list 1
+		auto resetWorld = [&]() {
+			llMain->entries = {
+				MakeEntry(formA, 1, 1),
+				MakeEntry(formB, 1, 2),
+				MakeEntry(formC, 1, 3),
+				MakeEntry(formD, 1, 4),
+			};
+			llMain->numEntries = 4;
+			lootLists[0]->entries = { MakeEntry(helmet, 2, 1), MakeEntry(chest, 1, 2), MakeEntry(assignedArmor, 1, 3) };
+			lootLists[0]->numEntries = 3;
+			lootLists[1]->entries = { MakeEntry(sword, 1, 1), MakeEntry(bow, 1, 2), MakeEntry(sword2, 1, 3) };
+			lootLists[1]->numEntries = 3;
+		};
+
+		std::string example;
+		{
+			FILE* f = std::fopen("examples/EverythingRandomizer/EverythingRandomizer.lua", "rb");
+			Check(f != nullptr, "everythingrandomizer example readable");
+			char buf[4096];
+			size_t n;
+			while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) {
+				example.append(buf, n);
+			}
+			std::fclose(f);
+		}
+
+		auto writeConfig = [&](const char* a_content) {
+			std::ofstream out(scriptsDir / "EverythingRandomizer_config.lua", std::ios::binary);
+			out << a_content;
+		};
+
+		using Slot = std::tuple<RE::TESForm*, std::uint16_t, std::uint16_t>;
+		auto snapshot = [&](std::vector<Slot>& a_out) {
+			a_out.clear();
+			for (auto* list : { llMain, lootLists[0], lootLists[1] }) {
+				for (const auto& e : list->entries) {
+					a_out.emplace_back(e.form, e.count, e.level);
+				}
+			}
+		};
+		auto makeSlots = [](std::initializer_list<Slot> a_slots) { return std::vector<Slot>(a_slots); };
+
+		// Expected layouts (deterministic given the mock world + seed):
+		//   seed 1337: Keyword pool -> A,B,D,C; armor pool -> chest,helmet; weapon pool -> sword2,sword
+		const auto kSeed1337 = makeSlots({
+			{ formA, 1, 1 },
+			{ formB, 1, 2 },
+			{ formD, 1, 3 },
+			{ formC, 1, 4 },
+			{ chest, 2, 1 },
+			{ helmet, 1, 2 },
+			{ assignedArmor, 1, 3 },
+			{ sword2, 1, 1 },
+			{ sword, 1, 2 },
+			{ bow, 1, 3 },
+		});
+		//   seed 4242: all three pools shuffle (slots keep their count/level)
+		const auto kSeed4242 = makeSlots({
+			{ formD, 1, 1 },
+			{ formB, 1, 2 },
+			{ formA, 1, 3 },
+			{ formC, 1, 4 },
+			{ helmet, 2, 1 },
+			{ assignedArmor, 1, 2 },
+			{ chest, 1, 3 },
+			{ sword, 1, 1 },
+			{ bow, 1, 2 },
+			{ sword2, 1, 3 },
+		});
+		//   seed 1337 + excludePrefixes LItem: only llMain shuffles
+		const auto kSeed1337Excluded = makeSlots({
+			{ formB, 1, 1 },
+			{ formA, 1, 2 },
+			{ formC, 1, 3 },
+			{ formD, 1, 4 },
+			{ helmet, 2, 1 },
+			{ chest, 1, 2 },
+			{ assignedArmor, 1, 3 },
+			{ sword, 1, 1 },
+			{ bow, 1, 2 },
+			{ sword2, 1, 3 },
+		});
+
+		// run 1: defaults (no config -> seed 1337)
+		resetWorld();
+		DoString(lua, example.c_str());
+		std::vector<Slot> run1;
+		snapshot(run1);
+		Check(run1 == kSeed1337, "randomizer: seed 1337 layout");
+
+		// run 2: same defaults again -> identical layout (determinism)
+		resetWorld();
+		DoString(lua, example.c_str());
+		std::vector<Slot> run2;
+		snapshot(run2);
+		Check(run2 == run1, "randomizer: same seed -> identical layout");
+
+		// run 3: different seed -> different layout
+		writeConfig("return { seed = 4242 }\n");
+		resetWorld();
+		DoString(lua, example.c_str());
+		std::vector<Slot> run3;
+		snapshot(run3);
+		Check(run3 == kSeed4242, "randomizer: seed 4242 layout");
+		Check(run3 != run1, "randomizer: different seed -> different layout");
+
+		// run 4: excludePrefixes protects LItem lists
+		writeConfig("return { seed = 1337, excludePrefixes = { \"LItem\" } }\n");
+		resetWorld();
+		DoString(lua, example.c_str());
+		std::vector<Slot> run4;
+		snapshot(run4);
+		Check(run4 == kSeed1337Excluded, "randomizer: excludePrefixes protect LItem lists");
 
 		fs::remove_all("Data");
 	}

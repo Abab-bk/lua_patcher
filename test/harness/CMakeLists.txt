@@ -35,6 +35,13 @@ add_executable(
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/Equipment.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/Magic.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/FormList.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/Alchemy.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/Enchantment.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/Container.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/Actors.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/World.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/Shout.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/Light.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/ScriptLoader.cpp)
 
 target_include_directories(

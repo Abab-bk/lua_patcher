@@ -87,6 +87,13 @@ else()
         src/Equipment.cpp
         src/Magic.cpp
         src/FormList.cpp
+        src/Alchemy.cpp
+        src/Enchantment.cpp
+        src/Container.cpp
+        src/Actors.cpp
+        src/World.cpp
+        src/Shout.cpp
+        src/Light.cpp
         "${CMAKE_CURRENT_BINARY_DIR}/src/version.rc"
         USE_ADDRESS_LIBRARY)
 

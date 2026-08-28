@@ -30,9 +30,10 @@ conditions.
 | `getForm(identifier)` | Form or nil | Resolves `"Mod.esm\|000123"` / EditorID; never raises |
 | `isPluginInstalled(name)` | bool | Is the plugin in the load order |
 | `tryLoadConfig(name)` | table or nil | Loads sibling `Scripts/<name>_config.lua`; nil if missing/failed; raises on invalid names |
-| `leveledList(formOrId)` | LeveledList | Raises if the form is not a leveled item/character list |
+| `leveledList(formOrId)` | LeveledList | Raises if the form is not a leveled item/character/spell list |
 | `allLeveledItems()` | array of LeveledList | Every `TESLevItem` |
 | `allLeveledCharacters()` | array of LeveledList | Every `TESLevCharacter` |
+| `allLeveledSpells()` | array of LeveledList | Every `TESLevSpell` |
 | `findLeveledListsContaining(formOrId)` | array of LeveledList | Snapshot reverse index: lists referencing the form in the game's pristine data (patches made this run are not visible) |
 | `allWeapons()` | array of Weapon | Every `TESObjectWEAP` |
 | `allArmors()` | array of Armor | Every `TESObjectARMO` |
@@ -40,12 +41,20 @@ conditions.
 | `allMagicEffects()` | array of MagicEffect | Every `EffectSetting` |
 | `formList(formOrId)` | FormList | Raises if the form is not a form list |
 | `allFormLists()` | array of FormList | Every `BGSListForm` |
+| `allIngredients()` | array of Ingredient | Every `IngredientItem` |
+| `allPotions()` | array of Potion | Every `AlchemyItem` (potions, poisons and food) |
+| `allEnchantments()` | array of Enchantment | Every `EnchantmentItem` |
+| `allContainers()` | array of Container | Every `TESObjectCONT` |
+| `allActors()` | array of Actor | Every `TESNPC` (NPC_ records; covers creatures) |
+| `allGlobals()` | array of Global | Every `TESGlobal` |
+| `allShouts()` | array of Shout | Every `TESShout` |
+| `allLights()` | array of Light | Every `TESObjectLIGH` |
 | `print(...)` | — | Redirected to the plugin log (same formatting as log) |
 
 
 ## Form (base type)
 
-Weapon, Armor, LeveledList, Spell and MagicEffect objects inherit these.
+Weapon, Armor, LeveledList, Spell, MagicEffect, Enchantment, Ingredient, Potion, Container, Actor, Shout, Light and Global objects inherit these.
 
 `tostring(form)` → `"Form[{}\|{:08X}]"`
 
@@ -208,6 +217,129 @@ ll.chanceNone = 50
 |---|---|---|
 | `mgef:addKeyword(kwOrId)` | bool | |
 | `mgef:removeKeyword(kwOrId)` | bool | |
+
+## Enchantment (extends Form)
+
+`tostring(enchantment)` → `"Enchantment[{:08X}]"`
+
+| Property | R/W | Type | Notes |
+|---|---|---|---|
+| `costOverride` | rw | integer | Non-negative |
+| `chargeOverride` | rw | integer | Non-negative |
+| `chargeTime` | rw | number | Charge time in seconds |
+| `castingType` | rw | string | "ConstantEffect", "FireAndForget", "Concentration", "Scroll" |
+| `delivery` | rw | string | "Self", "Touch", "Aimed", "TargetActor", "TargetLocation" |
+| `baseEnchantment` | ro | Form or nil | The base enchantment form |
+
+| Method | Returns | Notes |
+|---|---|---|
+| `enchantment:effects()` | array of effect snapshots | |
+| `enchantment:setEffects(list)` | — | |
+| `enchantment:addEffect(base, options?)` | index | |
+| `enchantment:clearEffects()` | — | |
+
+## Ingredient (extends Form)
+
+`tostring(ingredient)` → `"Ingredient[{:08X}]"`
+
+| Property | R/W | Type | Notes |
+|---|---|---|---|
+| `costOverride` | rw | integer | Non-negative |
+
+| Method | Returns | Notes |
+|---|---|---|
+| `ingredient:effects()` | array of effect snapshots | |
+| `ingredient:setEffects(list)` | — | |
+| `ingredient:addEffect(base, options?)` | index | |
+| `ingredient:clearEffects()` | — | |
+
+## Potion (extends Form)
+
+`tostring(potion)` → `"Potion[{:08X}]"`
+
+| Property | R/W | Type | Notes |
+|---|---|---|---|
+| `costOverride` | rw | integer | Non-negative |
+| `isPoison` | ro | bool | Poison flag |
+| `isFood` | ro | bool | Food flag |
+
+| Method | Returns | Notes |
+|---|---|---|
+| `potion:effects()` | array of effect snapshots | |
+| `potion:setEffects(list)` | — | |
+| `potion:addEffect(base, options?)` | index | |
+| `potion:clearEffects()` | — | |
+
+## Container (extends Form)
+
+`tostring(container)` → `"Container[{:08X}]"`
+
+| Property | R/W | Type | Notes |
+|---|---|---|---|
+| `numObjects` | ro | integer | Entry count |
+| `allowStolenItems` | rw | bool | Whether looted items are flagged stolen |
+
+| Method | Returns | Notes |
+|---|---|---|
+| `container:contents()` | array of entry snapshots | |
+| `container:setContents(list)` | — | |
+| `container:addItem(formOrId, count?)` | — | |
+| `container:removeItem(formOrId)` | bool | |
+| `container:has(formOrId)` | bool | |
+| `container:clearContents()` | — | |
+
+## Actor (extends Form)
+
+`tostring(actor)` → `"Actor[{:08X}]"`
+
+| Property | R/W | Type | Notes |
+|---|---|---|---|
+| `level` | rw | integer | Clamped to 0..65535 |
+| `health` | rw | integer | Clamped to 0..65535 |
+| `magicka` | rw | integer | Clamped to 0..65535 |
+| `stamina` | rw | integer | Clamped to 0..65535 |
+| `race` | ro | Form or nil | The actor's race |
+| `npcClass` | ro | Form or nil | The actor's class |
+
+| Method | Returns | Notes |
+|---|---|---|
+| `actor:skills()` | array of skill snapshots | |
+| `actor:setSkill(skill, value)` | — | |
+
+## Shout (extends Form)
+
+`tostring(shout)` → `"Shout[{:08X}]"`
+
+| Method | Returns | Notes |
+|---|---|---|
+| `shout:variations()` | array of variation snapshots | |
+| `shout:setVariation(index, entry)` | — | |
+| `shout:setVariations(list)` | — | |
+| `shout:word(index)` | Form or nil | |
+| `shout:spell(index)` | Form or nil | |
+
+## Light (extends Form)
+
+`tostring(light)` → `"Light[{:08X}]"`
+
+| Property | R/W | Type | Notes |
+|---|---|---|---|
+| `radius` | rw | integer | Clamped to 0..65535 |
+| `color` | rw | table { r, g, b } | Table `{ r, g, b }` with 0..255 channels |
+| `fov` | rw | number | Spotlight field of view |
+| `falloff` | rw | number | Non-negative |
+| `fade` | rw | number | Non-negative |
+| `canCarry` | ro | bool | Can be picked up |
+| `dynamic` | ro | bool | Dynamic light flag |
+
+## Global (extends Form)
+
+`tostring(global)` → `"Global[{:08X}]"`
+
+| Property | R/W | Type | Notes |
+|---|---|---|---|
+| `value` | rw | number | The global's float value |
+| `globalType` | ro | string | "Float", "Long", "Short" |
 
 ## FormList (extends Form)
 

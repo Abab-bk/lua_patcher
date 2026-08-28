@@ -58,14 +58,15 @@ namespace LuaPatcher::Effects
 	}
 
 	// Resolves the effect's base effect from a snapshot row: the baseEffect
-	// field may be nil (empty slot) or a form identifier/form.
+	// field may be nil (empty slot) or a form reference (Form object, EditorID
+	// string, or { "Plugin", "000123" } pair table).
 	inline RE::EffectSetting* ParseBaseEffect(const sol::table& a_row)
 	{
 		const auto base = a_row.get<sol::optional<sol::object>>("baseEffect");
 		if (!base || base->is<sol::nil_t>()) {
 			return nullptr;
 		}
-		auto* form = LuaPatcher::CheckForm(*base);
+		auto* form = LuaPatcher::CheckFormValue(*base);
 		auto* effect = form->As<RE::EffectSetting>();
 		if (!effect) {
 			throw sol::error{ "baseEffect must be a magic effect form" };
@@ -78,8 +79,23 @@ namespace LuaPatcher::Effects
 	inline RE::Effect* ParseEffect(const sol::object& a_value)
 	{
 		auto* effect = new RE::Effect();
-		if (a_value.is<sol::table>()) {
+		// A form userdata must be checked before is<table>: sol2 reports some
+		// userdata as tables in this Lua build, and treating a form as a
+		// snapshot row would raise via the form's __index metamethod.
+		if (a_value.is<sol::table>() && !a_value.is<LuaForm>()) {
 			const auto row = a_value.as<sol::table>();
+			// A { "Plugin", "000123" } pair table is a form reference, not a
+			// snapshot row.
+			const auto pairA = row.get<sol::optional<sol::object>>(1);
+			const auto pairB = row.get<sol::optional<sol::object>>(2);
+			const bool isPair = pairA && pairB && pairA->is<std::string>() && pairB->is<std::string>();
+			if (isPair) {
+				effect->baseEffect = LuaPatcher::CheckFormValue(a_value)->As<RE::EffectSetting>();
+				if (!effect->baseEffect) {
+					throw sol::error{ "expected a magic effect form or an effects-table entry" };
+				}
+				return effect;
+			}
 			effect->baseEffect = ParseBaseEffect(row);
 			effect->effectItem.magnitude =
 				static_cast<float>(GetNumberOption(row, "magnitude", effect->effectItem.magnitude));
@@ -89,7 +105,7 @@ namespace LuaPatcher::Effects
 				GetNumberOption(row, "duration", static_cast<double>(effect->effectItem.duration))));
 			effect->cost = static_cast<float>(GetNumberOption(row, "cost", effect->cost));
 		} else if (!a_value.is<sol::nil_t>()) {
-			effect->baseEffect = LuaPatcher::CheckForm(a_value)->As<RE::EffectSetting>();
+			effect->baseEffect = LuaPatcher::CheckFormValue(a_value)->As<RE::EffectSetting>();
 			if (!effect->baseEffect) {
 				throw sol::error{ "expected a magic effect form or an effects-table entry" };
 			}
@@ -122,22 +138,46 @@ namespace LuaPatcher::Effects
 	}
 
 	// Appends one effect slot; returns the index of the new slot (1-based).
-	// `addEffect(baseEffect, { magnitude?, area?, duration?, cost? })` with
-	// baseEffect as a form/id (or nil for an empty slot), or
-	// `addEffect({ baseEffect, magnitude, area, duration, cost })` as a full
-	// snapshot table.
-	inline lua_Integer AddEffect(RE::MagicItem* a_item, const sol::object& a_base, const sol::object& a_options)
+	// `addEffect(formRef, { magnitude?, area?, duration?, cost? })` with formRef
+	// as a form reference (Form / "EditorID" / ("Plugin", "000123")) or nil for
+	// an empty slot, or `addEffect({ baseEffect, magnitude, area, duration,
+	// cost })` as a full snapshot table.
+	inline lua_Integer AddEffect(RE::MagicItem* a_item, sol::variadic_args a_args)
 	{
-		auto* effect = ParseEffect(a_base);
+		if (a_args.size() < 1) {
+			throw sol::error{ "bad argument #1 to 'addEffect' (missing base effect)" };
+		}
 
-		if (a_base.is<sol::table>()) {
-			if (!a_options.is<sol::nil_t>()) {
+		const sol::object first = a_args.get<sol::object>(0);
+		RE::Effect* effect = nullptr;
+		std::size_t optionsIndex = 1;
+
+		const bool firstIsSnapshot = first.is<sol::table>() && !first.is<LuaForm>();
+		if (firstIsSnapshot || first.is<sol::nil_t>()) {
+			effect = ParseEffect(first);
+		} else {
+			const auto ref = LuaPatcher::ParseFormRef(a_args, "addEffect");
+			optionsIndex = ref.consumed;
+			auto* setting = ref.form->As<RE::EffectSetting>();
+			if (!setting) {
+				throw sol::error{ "addEffect: base must be a magic effect form" };
+			}
+			effect = new RE::Effect();
+			effect->baseEffect = setting;
+		}
+
+		const sol::optional<sol::object> a_options =
+			optionsIndex < a_args.size() ? sol::optional<sol::object>{ a_args.get<sol::object>(optionsIndex) }
+			                             : sol::nullopt;
+
+		if (firstIsSnapshot) {
+			if (a_options) {
 				throw sol::error{
 					"bad argument #2 to 'addEffect' (expected nothing when the first argument is a snapshot table)"
 				};
 			}
-		} else if (a_options.is<sol::table>()) {
-			const auto opts = a_options.as<sol::table>();
+		} else if (a_options && a_options->is<sol::table>()) {
+			const auto opts = a_options->as<sol::table>();
 			effect->effectItem.magnitude =
 				static_cast<float>(GetNumberOption(opts, "magnitude", effect->effectItem.magnitude));
 			effect->effectItem.area = static_cast<std::uint32_t>(
@@ -145,7 +185,7 @@ namespace LuaPatcher::Effects
 			effect->effectItem.duration = static_cast<std::uint32_t>(static_cast<lua_Integer>(
 				GetNumberOption(opts, "duration", static_cast<double>(effect->effectItem.duration))));
 			effect->cost = static_cast<float>(GetNumberOption(opts, "cost", effect->cost));
-		} else if (!a_options.is<sol::nil_t>()) {
+		} else if (a_options && !a_options->is<sol::nil_t>()) {
 			throw sol::error{ "bad argument #2 to 'addEffect' (expected an options table or nothing)" };
 		}
 

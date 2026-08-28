@@ -78,15 +78,18 @@ namespace LuaPatcher
 	}
 
 	// Lua: lua_patcher.isQuestReferenced(formOrId) -> bool
-	bool IsQuestReferencedLua(const sol::object& a_form)
+	bool IsQuestReferencedLua(sol::variadic_args a_args)
 	{
-		auto* form = CheckForm(a_form);
+		auto* form = ParseFormRef(a_args, "isQuestReferenced").form;
 		return IsQuestReferenced(form);
 	}
 
 	void RegisterProtection(sol::state_view& a_lua)
 	{
 		sol::table patcher = a_lua["lua_patcher"].get<sol::table>();
-		patcher["isQuestReferenced"] = &IsQuestReferencedLua;
+		patcher["isQuestReferenced"] = [](sol::variadic_args a_args) {
+			auto* form = LuaPatcher::ParseFormRef(a_args, "isQuestReferenced").form;
+			return LuaPatcher::IsQuestReferenced(form);
+		};
 	}
 }

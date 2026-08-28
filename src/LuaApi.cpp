@@ -102,14 +102,10 @@ namespace
 
 	// ---- lua_patcher core functions ----
 
-	sol::object GetFormById(sol::this_state a_state, const sol::object& a_identifier)
+	sol::object GetFormById(sol::this_state a_state, sol::variadic_args a_args)
 	{
-		if (!a_identifier.is<std::string>()) {
-			throw sol::error{ "bad argument #1 to 'GetFormById' (identifier must be a string)" };
-		}
-
 		sol::state_view lua(a_state);
-		return LuaPatcher::PushForm(lua, LuaPatcher::LookupFormByIdentifier(a_identifier.as<std::string_view>()));
+		return LuaPatcher::PushForm(lua, LuaPatcher::LookupFormRef(a_args, "getForm"));
 	}
 
 	bool IsPluginInstalled(const sol::object& a_name)
@@ -190,57 +186,63 @@ namespace
 
 namespace LuaPatcher
 {
-	RE::TESForm* LookupFormByIdentifier(const std::string_view& a_identifier)
+	RE::TESForm* LookupFormByPluginFormId(const std::string_view& a_plugin, const std::string_view& a_formId)
 	{
 		static std::unordered_map<std::string, RE::TESForm*> cache;
 
-		const std::string key(a_identifier);
+		const std::string key = fmt::format("{}|{}", a_plugin, a_formId);
 		if (const auto it = cache.find(key); it != cache.end()) {
 			return it->second;
 		}
 
 		auto* dataHandler = RE::TESDataHandler::GetSingleton();
-		if (!dataHandler) {
-			return nullptr;
-		}
-
 		RE::TESForm* result = nullptr;
-		try {
-			if (const auto delimiter = a_identifier.find('|'); delimiter != std::string_view::npos) {
-				const auto modName = a_identifier.substr(0, delimiter);
-				const auto modForm = a_identifier.substr(delimiter + 1);
-				auto rawFormID = static_cast<std::uint32_t>(std::stoul(std::string(modForm), nullptr, 16));
+		if (dataHandler) {
+			try {
+				auto rawFormID = static_cast<std::uint32_t>(std::stoul(std::string(a_formId), nullptr, 16));
 
-				const auto* mod = dataHandler->LookupModByName(modName);
+				const auto* mod = dataHandler->LookupModByName(a_plugin);
 				if (mod && mod->IsLight()) {
 					rawFormID &= 0xFFF;
 				} else {
 					rawFormID &= 0xFFFFFF;
 				}
 
-				result = dataHandler->LookupForm(rawFormID, modName);
-			} else {
-				result = RE::TESForm::LookupByEditorID(a_identifier);
+				result = dataHandler->LookupForm(rawFormID, a_plugin);
+			} catch (const std::exception& e) {
+				logger::warn("LuaPatcher: invalid formID '{}|{}': {}", a_plugin, a_formId, e.what());
 			}
-		} catch (const std::exception& e) {
-			logger::warn("LuaPatcher: invalid form identifier '{}': {}", a_identifier, e.what());
 		}
 
 		cache.emplace(key, result);
 		return result;
 	}
 
-	RE::TESForm* CheckForm(const sol::object& a_value)
+	RE::TESForm* LookupFormByEditorId(const std::string_view& a_editorId)
 	{
-		if (a_value.is<std::string>()) {
-			auto* form = LookupFormByIdentifier(a_value.as<std::string_view>());
-			if (!form) {
-				throw sol::error{ "form identifier does not resolve to a loaded form" };
-			}
-			return form;
+		static std::unordered_map<std::string, RE::TESForm*> cache;
+
+		const std::string key(a_editorId);
+		if (const auto it = cache.find(key); it != cache.end()) {
+			return it->second;
 		}
 
-		return ToAnyForm(a_value);
+		RE::TESForm* result = nullptr;
+		if (RE::TESDataHandler::GetSingleton()) {
+			result = RE::TESForm::LookupByEditorID(a_editorId);
+		}
+
+		cache.emplace(key, result);
+		return result;
+	}
+
+	// Reads a string argument, tolerating a nil for missing values.
+	std::string_view ArgString(const sol::object& a_value)
+	{
+		if (!a_value.is<std::string>()) {
+			throw sol::error{ "expected a string" };
+		}
+		return a_value.as<std::string_view>();
 	}
 
 	RE::TESForm* ToAnyForm(const sol::object& a_value)
@@ -249,6 +251,94 @@ namespace LuaPatcher
 			return a_value.as<LuaForm>().form;
 		}
 		throw sol::error{ "expected a form identifier string or a Form" };
+	}
+
+	RE::TESForm* LookupFormValue(const sol::object& a_value)
+	{
+		if (a_value.is<LuaForm>()) {
+			return ToAnyForm(a_value);
+		}
+
+		if (a_value.is<std::string>()) {
+			return LookupFormByEditorId(a_value.as<std::string_view>());
+		}
+
+		if (a_value.is<sol::table>()) {
+			const auto pair = a_value.as<sol::table>();
+			const auto plugin = pair.get<sol::optional<sol::object>>(1);
+			const auto formId = pair.get<sol::optional<sol::object>>(2);
+			if (plugin && formId && plugin->is<std::string>() && formId->is<std::string>()) {
+				return LookupFormByPluginFormId(plugin->as<std::string_view>(), formId->as<std::string_view>());
+			}
+			return nullptr;
+		}
+
+		return nullptr;
+	}
+
+	RE::TESForm* CheckFormValue(const sol::object& a_value)
+	{
+		auto* form = LookupFormValue(a_value);
+		if (!form) {
+			throw sol::error{ "form reference does not resolve to a loaded form" };
+		}
+		return form;
+	}
+
+	FormRef ParseFormRef(const sol::variadic_args& a_args, const std::string_view a_method)
+	{
+		if (a_args.size() < 1) {
+			throw sol::error{ fmt::format("bad argument #1 to '{}' (missing form reference)", a_method) };
+		}
+
+		const sol::object first = a_args.get<sol::object>(0);
+		if (first.is<std::string>()) {
+			if (a_args.size() >= 2 && a_args.get<sol::object>(1).is<std::string>()) {
+				const auto plugin = first.as<std::string_view>();
+				const auto formId = a_args.get<sol::object>(1).as<std::string_view>();
+				auto* form = LookupFormByPluginFormId(plugin, formId);
+				if (!form) {
+					throw sol::error{
+						fmt::format("bad argument #1-2 to '{}' (form '{}|{}' not found)", a_method, plugin, formId)
+					};
+				}
+				return { form, 2 };
+			}
+
+			auto* form = LookupFormByEditorId(first.as<std::string_view>());
+			if (!form) {
+				throw sol::error{
+					fmt::format("bad argument #1 to '{}' (no form with editorID '{}' is loaded)", a_method,
+						first.as<std::string_view>())
+				};
+			}
+			return { form, 1 };
+		}
+
+		return { ToAnyForm(first), 1 };
+	}
+
+	// Lenient form reference lookup for getForm: mirrors ParseFormRef but
+	// returns nullptr on a miss instead of raising.
+	RE::TESForm* LookupFormRef(const sol::variadic_args& a_args, const std::string_view a_method)
+	{
+		if (a_args.size() < 1) {
+			throw sol::error{ fmt::format("bad argument #1 to '{}' (missing form reference)", a_method) };
+		}
+
+		const sol::object first = a_args.get<sol::object>(0);
+		if (first.is<std::string>()) {
+			if (a_args.size() >= 2 && a_args.get<sol::object>(1).is<std::string>()) {
+				return LookupFormByPluginFormId(first.as<std::string_view>(), a_args.get<sol::object>(1).as<std::string_view>());
+			}
+			return LookupFormByEditorId(first.as<std::string_view>());
+		}
+
+		if (!first.is<LuaForm>()) {
+			throw sol::error{ fmt::format("bad argument #1 to '{}' (expected a form reference)", a_method) };
+		}
+
+		return ToAnyForm(first);
 	}
 
 	sol::object PushForm(sol::state_view& a_lua, RE::TESForm* a_form)
@@ -393,8 +483,8 @@ namespace LuaPatcher
 			}),
 
 			"hasKeyword",
-			[](const LuaForm& a_form, const sol::object& a_keyword) {
-				auto* keyword = CheckForm(a_keyword)->As<RE::BGSKeyword>();
+			[](const LuaForm& a_form, sol::variadic_args a_args) {
+				auto* keyword = ParseFormRef(a_args, "hasKeyword").form->As<RE::BGSKeyword>();
 				const auto* keywordForm = a_form.form->As<RE::BGSKeywordForm>();
 				return keyword && keywordForm && keywordForm->HasKeyword(keyword);
 			});

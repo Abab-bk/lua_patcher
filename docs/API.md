@@ -11,8 +11,10 @@ conditions.
 
 ## Conventions
 
-- **Form identifiers**: a string `"Plugin.esm|000123"` (mod name + hex local
-  formID; light plugins use the 0xFFF-masked ID) or a bare `EditorID`.
+- **Form references**: a form object, an `"EditorID"` string, a
+  `("Plugin.esm", "000123")` argument pair (plugin name + hex local formID;
+  light plugins use the 0xFFF-masked ID), or a `{ "Plugin.esm", "000123" }`
+  pair table for table fields. No `"Plugin|000123"` string splitting.
 - **Errors**: invalid arguments and failed lookups raise a Lua error (catchable
   with `pcall`). `lua_patcher.getForm` is the exception: it returns `nil` for a
   miss instead of raising.
@@ -27,19 +29,19 @@ conditions.
 | `log(...)` | — | Joins arguments with tabs (tostring on each) into the plugin log |
 | `warn(...)` | — | Like log, at warn level |
 | `error(...)` | — | Like log, at error level |
-| `getForm(identifier)` | Form or nil | Resolves `"Mod.esm\|000123"` / EditorID; never raises |
+| `getForm(formRef)` | Form or nil | Resolves a form reference; never raises |
 | `isPluginInstalled(name)` | bool | Is the plugin in the load order |
 | `tryLoadConfig(name)` | table or nil | Loads sibling `Scripts/<name>_config.lua`; nil if missing/failed; raises on invalid names |
-| `leveledList(formOrId)` | LeveledList | Raises if the form is not a leveled item/character/spell list |
+| `leveledList(formRef)` | LeveledList | Raises if the form is not a leveled item/character/spell list |
 | `allLeveledItems()` | array of LeveledList | Every `TESLevItem` |
 | `allLeveledCharacters()` | array of LeveledList | Every `TESLevCharacter` |
 | `allLeveledSpells()` | array of LeveledList | Every `TESLevSpell` |
-| `findLeveledListsContaining(formOrId)` | array of LeveledList | Snapshot reverse index: lists referencing the form in the game's pristine data (patches made this run are not visible) |
+| `findLeveledListsContaining(formRef)` | array of LeveledList | Snapshot reverse index: lists referencing the form in the game's pristine data (patches made this run are not visible) |
 | `allWeapons()` | array of Weapon | Every `TESObjectWEAP` |
 | `allArmors()` | array of Armor | Every `TESObjectARMO` |
 | `allSpells()` | array of Spell | Every `SpellItem` |
 | `allMagicEffects()` | array of MagicEffect | Every `EffectSetting` |
-| `formList(formOrId)` | FormList | Raises if the form is not a form list |
+| `formList(formRef)` | FormList | Raises if the form is not a form list |
 | `allFormLists()` | array of FormList | Every `BGSListForm` |
 | `allIngredients()` | array of Ingredient | Every `IngredientItem` |
 | `allPotions()` | array of Potion | Every `AlchemyItem` (potions, poisons and food) |
@@ -50,7 +52,7 @@ conditions.
 | `allShouts()` | array of Shout | Every `TESShout` |
 | `allLights()` | array of Light | Every `TESObjectLIGH` |
 | `allEncounterZones()` | array of EncounterZone | Every `BGSEncounterZone` (ENCOUNTER_ZONE records) |
-| `isQuestReferenced(formOrId)` | bool | True when any loaded quest alias references the form (forced refs, created objects, unique actors); protects quest gear/NPCs from randomizers |
+| `isQuestReferenced(formRef)` | bool | True when any loaded quest alias references the form (forced refs, created objects, unique actors); protects quest gear/NPCs from randomizers |
 | `print(...)` | — | Redirected to the plugin log (same formatting as log) |
 
 
@@ -67,7 +69,7 @@ Weapon, Armor, LeveledList, Spell, MagicEffect, Enchantment, Ingredient, Potion,
 | `type` | ro | string | e.g. `"Weapon"`, `"Armor"`, `"Spell"`, `"LeveledItem"`, ... |
 | `editorId` | ro | string or nil | From the game's editorID table |
 | `name` | ro | string or nil | Full name |
-| `identifier` | ro | string | `"Plugin.esm\|000123"` form |
+| `identifier` | ro | string | `"Plugin.esm\|000123"` display string (not parseable) |
 | `plugin` | ro | string or nil | Source plugin |
 | `value` | ro | integer or nil | If the form has a value |
 | `weight` | ro | number or nil | If the form has a weight |
@@ -76,7 +78,7 @@ Weapon, Armor, LeveledList, Spell, MagicEffect, Enchantment, Ingredient, Potion,
 
 | Method | Returns | Notes |
 |---|---|---|
-| `form:hasKeyword(kwOrId)` | bool | |
+| `form:hasKeyword(kwRef)` | bool | |
 
 ## Weapon (extends Form)
 
@@ -103,8 +105,8 @@ Weapon, Armor, LeveledList, Spell, MagicEffect, Enchantment, Ingredient, Potion,
 
 | Method | Returns | Notes |
 |---|---|---|
-| `weapon:addKeyword(kwOrId)` | bool | |
-| `weapon:removeKeyword(kwOrId)` | bool | |
+| `weapon:addKeyword(kwRef)` | bool | |
+| `weapon:removeKeyword(kwRef)` | bool | |
 
 ## Armor (extends Form)
 
@@ -122,8 +124,8 @@ Weapon, Armor, LeveledList, Spell, MagicEffect, Enchantment, Ingredient, Potion,
 
 | Method | Returns | Notes |
 |---|---|---|
-| `armor:addKeyword(kwOrId)` | bool | |
-| `armor:removeKeyword(kwOrId)` | bool | |
+| `armor:addKeyword(kwRef)` | bool | |
+| `armor:removeKeyword(kwRef)` | bool | |
 
 ## LeveledList (extends Form)
 
@@ -142,14 +144,14 @@ Weapon, Armor, LeveledList, Spell, MagicEffect, Enchantment, Ingredient, Potion,
 | Method | Returns | Notes |
 |---|---|---|
 | `list:entries()` | array of entry snapshots | |
-| `list:add(formOrId, level?, count?)` | — | |
-| `list:addIfAbsent(formOrId, level?, count?)` | — | |
-| `list:remove(formOrId, options?)` | — | |
+| `list:add(formRef, level?, count?)` | — | |
+| `list:addIfAbsent(formRef, level?, count?)` | — | |
+| `list:remove(formRef, options?)` | — | |
 | `list:removeIf(predicate)` | — | |
-| `list:removeByKeyword(kwOrId)` | — | |
-| `list:replace(fromOrId, toOrId)` | — | |
-| `list:multiplyCount(formOrId, factor)` | — | |
-| `list:has(formOrId)` | bool | |
+| `list:removeByKeyword(kwRef)` | — | |
+| `list:replace(fromRef, toRef)` | — | |
+| `list:multiplyCount(formRef, factor)` | — | |
+| `list:has(formRef)` | bool | |
 | `list:clear()` | — | |
 | `list:sort()` | — | |
 
@@ -160,13 +162,15 @@ and the entries of `entries()` are snapshots: patches applied during this run ar
 not reflected.
 
 ```lua
-local ll = lua_patcher.leveledList("LuaPatcherExample.esp|00001000")
+local ll = lua_patcher.leveledList("LuaPatcherExample.esp", "00001000")
 
-ll:add("LuaPatcherExample.esp|00002000", 5, 2)          -- positional
-ll:add("LuaPatcherExample.esp|00002001", { level = 10 })-- options table
+ll:add("LuaPatcherExample.esp", "00002000", 5, 2)          -- plugin + local formID
+ll:add("LuaPatcherExample.esp", "00002001", { level = 10 })-- options table
+ll:add("LItemPotion", 1, 1)                                 -- editorID string
+ll:add(ll:entries()[1].form, 3)                             -- form object
 
 -- remove every entry of the form with level >= 5 and count <= 2
-ll:remove("LuaPatcherExample.esp|00002002", { minLevel = 5, maxCount = 2 })
+ll:remove("LuaPatcherExample.esp", "00002002", { minLevel = 5, maxCount = 2 })
 
 -- predicate: full Lua power
 ll:removeIf(function(e)
@@ -193,8 +197,8 @@ ll.chanceNone = 50
 
 | Method | Returns | Notes |
 |---|---|---|
-| `spell:addKeyword(kwOrId)` | bool | |
-| `spell:removeKeyword(kwOrId)` | bool | |
+| `spell:addKeyword(kwRef)` | bool | |
+| `spell:removeKeyword(kwRef)` | bool | |
 
 ## MagicEffect (extends Form)
 
@@ -219,8 +223,8 @@ ll.chanceNone = 50
 
 | Method | Returns | Notes |
 |---|---|---|
-| `mgef:addKeyword(kwOrId)` | bool | |
-| `mgef:removeKeyword(kwOrId)` | bool | |
+| `mgef:addKeyword(kwRef)` | bool | |
+| `mgef:removeKeyword(kwRef)` | bool | |
 
 ## Enchantment (extends Form)
 
@@ -239,7 +243,7 @@ ll.chanceNone = 50
 |---|---|---|
 | `enchantment:effects()` | array of effect snapshots | |
 | `enchantment:setEffects(list)` | — | |
-| `enchantment:addEffect(base, options?)` | index | |
+| `enchantment:addEffect(baseRef, options?)` | index | |
 | `enchantment:clearEffects()` | — | |
 
 ## Ingredient (extends Form)
@@ -254,7 +258,7 @@ ll.chanceNone = 50
 |---|---|---|
 | `ingredient:effects()` | array of effect snapshots | |
 | `ingredient:setEffects(list)` | — | |
-| `ingredient:addEffect(base, options?)` | index | |
+| `ingredient:addEffect(baseRef, options?)` | index | |
 | `ingredient:clearEffects()` | — | |
 
 ## Potion (extends Form)
@@ -271,7 +275,7 @@ ll.chanceNone = 50
 |---|---|---|
 | `potion:effects()` | array of effect snapshots | |
 | `potion:setEffects(list)` | — | |
-| `potion:addEffect(base, options?)` | index | |
+| `potion:addEffect(baseRef, options?)` | index | |
 | `potion:clearEffects()` | — | |
 
 ## Container (extends Form)
@@ -287,9 +291,9 @@ ll.chanceNone = 50
 |---|---|---|
 | `container:contents()` | array of entry snapshots | |
 | `container:setContents(list)` | — | |
-| `container:addItem(formOrId, count?)` | — | |
-| `container:removeItem(formOrId)` | bool | |
-| `container:has(formOrId)` | bool | |
+| `container:addItem(formRef, count?)` | — | |
+| `container:removeItem(formRef)` | bool | |
+| `container:has(formRef)` | bool | |
 | `container:clearContents()` | — | |
 
 ## Actor (extends Form)
@@ -356,9 +360,9 @@ ll.chanceNone = 50
 | Method | Returns | Notes |
 |---|---|---|
 | `fl:forms()` | array of Form | |
-| `fl:add(formOrId)` | bool | |
-| `fl:remove(formOrId)` | bool | |
-| `fl:has(formOrId)` | bool | |
+| `fl:add(formRef)` | bool | |
+| `fl:remove(formRef)` | bool | |
+| `fl:has(formRef)` | bool | |
 | `fl:clear()` | — | |
 
 ## Script layout
@@ -371,9 +375,8 @@ Data/SKSE/Plugins/LuaPatcher/Scripts/
 
 Scripts run in priority order: a `-- priority: N` comment (first 512 bytes of the
 file) sets the execution order, lowest first; scripts without a declaration get
-priority 0 and run first. Equal priorities fall back to path order. Example
-pipeline: rebalance stats (10) -> fix keywords (20) -> join tempering sets (30)
--> inject into leveled lists (40).
+priority 0 and run first. Equal priorities fall back to path order. EverythingRandomizer
+declares priority 50 so user scripts in the 10-40 range run before it.
 
 Config chunks return a table; `tryLoadConfig` returns it (or nil when the file
 is missing or fails to load). Scripts typically merge it over defaults:

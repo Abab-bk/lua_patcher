@@ -6,9 +6,9 @@ Usage:
     invoke build                             configure + build (release-linux)
     
     invoke deploy                            build + deploy the DLL only
-    invoke deploy --copy-example             also copy example(s) (default: GearInjection)
+    invoke deploy --copy-example             also copy example(s) (default: EverythingRandomizer)
     invoke deploy --copy-all-examples        also copy every distributable example
-    invoke deploy --example NAME[,NAME...]   choose which example(s) to copy (default: GearInjection)
+    invoke deploy --example NAME[,NAME...]   choose which example(s) to copy (default: EverythingRandomizer)
     
     invoke format                            format C++ sources with clang-format
 
@@ -20,7 +20,7 @@ Usage:
     invoke package --build-dir DIR           use existing build dir instead of building
     invoke package --version X.Y.Z           override version
 
-    invoke package-example                   package GearInjection as standalone mod (alias: packageExample)
+    invoke package-example                   package EverythingRandomizer as standalone mod (alias: packageExample)
     invoke package-example --example NAME    package any distributable example
     invoke package-example --version X.Y.Z   override version
     invoke package-example --out DIR         override output dir/file (default: dist/)
@@ -59,12 +59,14 @@ CONFIG_RELATIVE = Path("SKSE/Plugins/LuaPatcher/Config")
 
 # Layout:
 #   examples/
+#     EverythingRandomizer/
+#       EverythingRandomizer.lua
+#       EverythingRandomizer_config.lua
+#       EverythingRandomizer_protection.lua
 #     GearInjection/
-#       GearInjection.lua
-#       GearInjection_config.lua
 #     snippets/   -> NOT distributable, reference only
 EXAMPLES_ROOT = ROOT / "examples"
-DEFAULT_EXAMPLE = "GearInjection"
+DEFAULT_EXAMPLE = "EverythingRandomizer"
 
 
 def _load_env() -> None:
@@ -359,21 +361,20 @@ def package_example(
     version: str = "",
     out: str = "",
 ):
-    """Create a distributable zip for a single example mod (default: GearInjection).
+    """Create a distributable zip for a single example mod (default: EverythingRandomizer).
 
     Packages examples/<Name>/ as a standalone mod with flat sibling layout:
         SKSE/Plugins/LuaPatcher/Scripts/<Name>.lua
         SKSE/Plugins/LuaPatcher/Scripts/<Name>_config.lua  (same directory, mirrors examples/)
 
-    --example NAME  example folder/name to package (default: GearInjection)
+    --example NAME  example folder/name to package (default: EverythingRandomizer)
     --version X.Y.Z override version (default: git tag or CMakeLists.txt)
     --out DIR       output dir or file (default: dist/<Name>-<ver>.zip)
 
     Examples:
         invoke package-example
-        invoke package-example --example GearInjection
-        invoke package-example --example MagicTweak --version 0.0.1 --out dist/
-        invoke packageExample --example WeaponArmorTweak
+        invoke package-example --example EverythingRandomizer
+        invoke package-example --example GearInjection --version 0.0.1 --out dist/
     """
     _ensure_root()
 
@@ -646,7 +647,7 @@ def deploy(
     """Build and deploy the mod (the LuaPatcher mod folder is cleared first).
 
     With --copy-example copy the example(s) named by --example
-    (comma/space separated, default: GearInjection).
+    (comma/space separated, default: EverythingRandomizer).
     With --copy-all-examples copy every distributable example in examples/.
     """
     mods_folder = _mods_folder(c)

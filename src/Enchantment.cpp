@@ -182,8 +182,8 @@ namespace LuaPatcher
 				Effects::SetEffectList(ToEnchantment(a_form), a_list);
 			},
 			"addEffect",
-			[](LuaEnchantment& a_form, const sol::object& a_base, const sol::object& a_options) {
-				return Effects::AddEffect(ToEnchantment(a_form), a_base, a_options);
+			[](LuaEnchantment& a_form, sol::variadic_args a_args) {
+				return Effects::AddEffect(ToEnchantment(a_form), a_args);
 			},
 			"clearEffects", [](LuaEnchantment& a_form) { Effects::ClearEffects(ToEnchantment(a_form)); });
 

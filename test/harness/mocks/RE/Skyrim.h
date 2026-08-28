@@ -139,6 +139,8 @@ namespace RE
 			return (_impl & static_cast<U>(a_value)) == 0;
 		}
 
+		[[nodiscard]] constexpr E get() const noexcept { return static_cast<E>(_impl); }
+
 		friend constexpr bool operator==(EnumSet a_lhs, E a_rhs) noexcept
 		{
 			return a_lhs._impl == static_cast<U>(a_rhs);
@@ -963,5 +965,81 @@ namespace RE
 		{
 			return MockForms<T>();
 		}
+	};
+
+	// Mirrors RE::BGSEncounterZone (ENCOUNTER_ZONE records; -1 levels mean
+	// "unset" and fall back to the location defaults).
+	class BGSEncounterZone : public TESForm
+	{
+	public:
+		struct Data
+		{
+			std::int8_t minLevel = -1;
+			std::int8_t maxLevel = -1;
+		};
+		Data data;
+	};
+
+	// Mirrors RE::ObjectRefHandle (a nullable object reference handle).
+	class ObjectRefHandle
+	{
+	public:
+		std::uint64_t handle = 0;
+
+		[[nodiscard]] std::uint64_t native_handle() const noexcept { return handle; }
+	};
+
+	// Mirrors RE::BGSBaseAlias (quest alias base; the concrete class is
+	// identified through the virtual GetTypeString()).
+	class BGSBaseAlias
+	{
+	public:
+		enum class FILL_TYPE : std::uint8_t
+		{
+			kNull = 0,
+			kLocationRefType = 1,
+			kCreated = 2,
+			kExternal = 3,
+			kUniqueActor = 4,
+			kNearAlias = 5,
+			kForced = 6,
+		};
+
+		struct FillData
+		{
+			struct ForcedData
+			{
+				ObjectRefHandle forcedRef;
+			};
+			struct CreatedData
+			{
+				TESForm* object = nullptr;
+			};
+			struct UniqueActorData
+			{
+				TESForm* uniqueActor = nullptr;
+			};
+			ForcedData forced;
+			CreatedData created;
+			UniqueActorData uniqueActor;
+		};
+
+		EnumSet<FILL_TYPE, std::uint8_t> fillType = FILL_TYPE::kNull;
+		FillData fillData;
+
+		[[nodiscard]] virtual std::string_view GetTypeString() const { return ""; }
+		virtual ~BGSBaseAlias() = default;
+	};
+
+	class BGSRefAlias : public BGSBaseAlias
+	{
+	public:
+		[[nodiscard]] std::string_view GetTypeString() const override { return std::string_view("Ref"); }
+	};
+
+	class TESQuest : public TESForm
+	{
+	public:
+		std::vector<BGSBaseAlias*> aliases;
 	};
 }

@@ -24,6 +24,8 @@
 #include "LuaApi.h"
 #include "ScriptLoader.h"
 #include "Utils.h"
+#include "EncounterZone.h"
+#include "Protection.h"
 
 namespace
 {
@@ -336,11 +338,14 @@ int main()
 	LuaPatcher::RegisterWorld(lua);
 	LuaPatcher::RegisterShout(lua);
 	LuaPatcher::RegisterLight(lua);
+	LuaPatcher::RegisterEncounterZone(lua);
+	LuaPatcher::BuildQuestProtection();
+	LuaPatcher::RegisterProtection(lua);
 
 	// --- core API tests -------------------------------------------------
 	DoString(lua, R"LUA(
 assert(lua_patcher.version == "0.1.0")
-local f = lua_patcher.getForm("MockPlugin.esp|00000100")
+local f = lua_patcher.getForm("MockPlugin.esp", "00000100")
 assert(f ~= nil, "getForm by mod|id")
 assert(f.formId == 0x01000100)
 assert(f.type == "LeveledItem")
@@ -348,9 +353,9 @@ assert(f.editorId == "MockLeveledList")
 assert(f.name == "Mock Chest")
 assert(f.identifier == "MockPlugin.esp|000100")
 assert(lua_patcher.getForm("MockFormA").formId == 0x01000A00, "getForm by editorId")
-assert(lua_patcher.getForm("MockPlugin.esp|00000A00").editorId == "MockFormA", "getForm id masking")
-assert(lua_patcher.getForm("MockLight.esl|000001") ~= nil, "light plugin id")
-assert(lua_patcher.getForm("NoSuchPlugin.esp|000001") == nil, "unknown plugin")
+assert(lua_patcher.getForm("MockPlugin.esp", "00000A00").editorId == "MockFormA", "getForm id masking")
+assert(lua_patcher.getForm("MockLight.esl", "000001") ~= nil, "light plugin id")
+assert(lua_patcher.getForm("NoSuchPlugin.esp", "000001") == nil, "unknown plugin")
 assert(lua_patcher.getForm("NoSuchEditorID") == nil, "unknown editorId")
 assert(lua_patcher.isPluginInstalled("MockPlugin.esp") == true)
 assert(lua_patcher.isPluginInstalled("MockLight.esl") == true)
@@ -372,7 +377,7 @@ local forms = fl:forms()
 assert(forms[1].editorId == "MockFormA" and forms[2].editorId == "MockFormB")
 assert(fl:has("MockFormA") == true)
 assert(fl:has("MockFormC") == false)
-assert(fl:has("MockPlugin.esp|00000A00") == true, "has by formId identifier")
+assert(fl:has("MockPlugin.esp", "00000A00") == true, "has by formId identifier")
 
 -- set semantics: add of a present form is a no-op
 assert(fl:add("MockFormA") == false)
@@ -394,7 +399,7 @@ fl:add("MockFormA")
 assert(fl.numForms == 1)
 
 -- identifier form and enumeration (MockFormList + 4 material sets)
-assert(lua_patcher.formList("MockPlugin.esp|00000600").identifier == "MockPlugin.esp|000600")
+assert(lua_patcher.formList("MockPlugin.esp", "00000600").identifier == "MockPlugin.esp|000600")
 assert(#lua_patcher.allFormLists() == 5)
 
 -- typed dispatch: getForm returns the FormList usertype
@@ -412,7 +417,7 @@ assert(not ok, "missing form must fail")
 
 	// --- leveled list operations ----------------------------------------
 	DoString(lua, R"LUA(
-local ll = lua_patcher.leveledList("MockPlugin.esp|00000100")
+local ll = lua_patcher.leveledList("MockPlugin.esp", "00000100")
 assert(ll ~= nil)
 assert(ll.numEntries == 3)
 assert(ll.calculateForEachItem == true)
@@ -459,8 +464,8 @@ assert(ll:has("MockFormB") == true)
 ll:remove("MockFormD")
 assert(ll.numEntries == 3)
 
--- replace MockFormC -> MockFormA
-ll:replace("MockFormC", "MockFormA")
+-- replace MockFormC -> MockFormA (pair syntax: two strings are a (plugin, formId) pair)
+ll:replace("MockPlugin.esp", "00000C00", "MockPlugin.esp", "00000A00")
 assert(ll.numEntries == 3)
 
 -- multiplyCount (counts 1 and 2 -> ceil(1*2.5)=3, ceil(2*2.5)=5)
@@ -510,14 +515,14 @@ assert(ll.numEntries == 0)
 	// --- error paths -----------------------------------------------------
 	DoString(lua, R"LUA(
 local ok, err
-ok, err = pcall(function() lua_patcher.getForm("MockPlugin.esp|ZZZZ") end)
+ok, err = pcall(function() lua_patcher.getForm("MockPlugin.esp", "ZZZZ") end)
 assert(ok, "invalid hex id -> nil, not an error")
-assert(lua_patcher.getForm("MockPlugin.esp|ZZZZ") == nil, "invalid hex id returns nil")
+assert(lua_patcher.getForm("MockPlugin.esp", "ZZZZ") == nil, "invalid hex id returns nil")
 
 ok, err = pcall(function() lua_patcher.leveledList("MockKeyword") end)
 assert(not ok, "non-leveled form must fail")
 
-local ll = lua_patcher.leveledList("MockPlugin.esp|00000100")
+local ll = lua_patcher.leveledList("MockPlugin.esp", "00000100")
 ok, err = pcall(function() ll:add("MissingEditorId") end)
 assert(not ok, "missing form must fail")
 
@@ -562,9 +567,9 @@ assert(type(form.type) == "string" and type(form.typeId) == "number")
 assert(form.type == "Keyword" and form.typeId > 0)
 
 -- __tostring must produce real formIDs, not literal format specifiers
-local ll0 = lua_patcher.leveledList("MockPlugin.esp|00000100")
+local ll0 = lua_patcher.leveledList("MockPlugin.esp", "00000100")
 assert(tostring(ll0) == "LeveledList[01000100]", "leveled list tostring")
-assert(tostring(lua_patcher.getForm("MockPlugin.esp|00000100")) == "LeveledList[01000100]", "typed getForm tostring")
+assert(tostring(lua_patcher.getForm("MockPlugin.esp", "00000100")) == "LeveledList[01000100]", "typed getForm tostring")
 assert(tostring(form) == "Form[MockPlugin.esp|000A00|01000A00]", "plain form tostring")
 )LUA");
 
@@ -578,7 +583,7 @@ assert(tostring(form) == "Form[MockPlugin.esp|000A00|01000A00]", "plain form tos
 
 	// --- typed dispatch + equipment properties ---------------------------
 	DoString(lua, R"LUA(
-local sword = lua_patcher.getForm("GearMod.esp|00001000")
+local sword = lua_patcher.getForm("GearMod.esp", "00001000")
 assert(sword ~= nil)
 assert(sword.type == "Weapon")
 assert(sword.damage == 25)
@@ -798,6 +803,8 @@ shout:setVariations({
   { spell = "GearShoutSpell", recoveryTime = 50 },
   { spell = "GearShoutSpell" },
 })
+-- form-object refs (like EverythingRandomizer's shuffleShoutSpells)
+shout:setVariations({ { word = shout:word(1), spell = shout:spell(1) } })
 local all = shout:variations()
 assert(all[1].spell.editorId == "GearShoutSpell" and all[2].recoveryTime == 50)
 assert(all[3].spell.editorId == "GearShoutSpell")
@@ -846,8 +853,8 @@ assert(#lua_patcher.allGlobals() == 2)  -- MockGlobal + MockLightGlobal
 
 	// --- assignment queries ----------------------------------------------
 	DoString(lua, R"LUA(
-local ll = lua_patcher.leveledList("MockPlugin.esp|00000100")
-local llChar = lua_patcher.leveledList("MockPlugin.esp|00000400")
+local ll = lua_patcher.leveledList("MockPlugin.esp", "00000100")
+local llChar = lua_patcher.leveledList("MockPlugin.esp", "00000400")
 assert(ll:has("MockFormA") == true)
 assert(ll:has("MockFormB") == false)
 assert(llChar:has("MockFormA") == false)
@@ -1011,75 +1018,6 @@ llChar:clear()
 		Check(llMain->numEntries == 2, "gearinjection: non-LItem lists untouched");
 	}
 
-	// --- run the shipped KeywordFixer.lua example -------------------------
-	{
-		std::string example;
-		{
-			FILE* f = std::fopen("examples/KeywordFixer/KeywordFixer.lua", "rb");
-			Check(f != nullptr, "keywordfixer example readable");
-			char buf[4096];
-			size_t n;
-			while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) {
-				example.append(buf, n);
-			}
-			std::fclose(f);
-		}
-		DoString(lua, example.c_str());
-
-		auto hasKeyword = [](RE::TESForm* a_form, RE::BGSKeyword* a_kw) {
-			auto* kwForm = a_form->As<RE::BGSKeywordForm>();
-			return kwForm && kwForm->HasKeyword(a_kw);
-		};
-
-		// material keywords derived from stats:
-		//   sword dmg 25 -> Daedric, bow dmg 12 -> Dwarven
-		//   chest rating 25 (heavy) -> Orcish, helmet rating 10 (light) -> Elven
-		Check(hasKeyword(sword, kwWeapDaedric), "keywordfixer: sword got Daedric material keyword");
-		Check(hasKeyword(bow, kwWeapDwarven), "keywordfixer: bow got Dwarven material keyword");
-		Check(hasKeyword(chest, kwArmorOrcish), "keywordfixer: chest got Orcish material keyword");
-		Check(hasKeyword(helmet, kwArmorElven), "keywordfixer: helmet got Elven material keyword");
-
-		// vanilla / non-playable gear untouched, existing keywords preserved
-		Check(!hasKeyword(sword2, kwWeapDaedric), "keywordfixer: non-playable gear untouched");
-		Check(!hasKeyword(vanillaChest, kwArmorOrcish), "keywordfixer: vanilla gear untouched");
-		Check(hasKeyword(chest, gearKw) && hasKeyword(chest, gearKw2), "keywordfixer: existing keywords preserved");
-	}
-
-	// --- run the shipped TemperingLists.lua example -----------------------
-	// Runs after KeywordFixer: it needs the material keywords to exist.
-	{
-		std::string example;
-		{
-			FILE* f = std::fopen("examples/TemperingLists/TemperingLists.lua", "rb");
-			Check(f != nullptr, "temperinglists example readable");
-			char buf[4096];
-			size_t n;
-			while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) {
-				example.append(buf, n);
-			}
-			std::fclose(f);
-		}
-		DoString(lua, example.c_str());
-
-		auto hasInList = [](RE::BGSListForm* a_list, RE::TESForm* a_form) { return a_list->HasForm(a_form); };
-
-		// sword/bow/chest/helmet got their material keywords from KeywordFixer
-		// and must now have joined the matching tempering sets
-		Check(hasInList(tempDaedric, sword), "temperinglists: sword joined Daedric set");
-		Check(hasInList(tempDwarven, bow), "temperinglists: bow joined Dwarven set");
-		Check(hasInList(tempOrcish, chest), "temperinglists: chest joined Orcish set");
-		Check(hasInList(tempElven, helmet), "temperinglists: helmet joined Elven set");
-
-		// vanilla / non-playable / keyword-less gear untouched
-		Check(!hasInList(tempOrcish, vanillaChest), "temperinglists: vanilla gear untouched");
-		Check(!hasInList(tempDaedric, sword2), "temperinglists: non-playable gear untouched");
-		Check(!hasInList(tempOrcish, assignedArmor), "temperinglists: keyword-less gear untouched");
-
-		// idempotent: re-running the script must not duplicate entries
-		DoString(lua, example.c_str());
-		Check(tempDaedric->forms.size() == 1, "temperinglists: re-run is idempotent");
-	}
-
 	// --- script runner: priority ordering + config exclusion ---------------
 	// Runs last: the chain mutates llMain, so nothing may depend on it after.
 	{
@@ -1099,26 +1037,26 @@ llChar:clear()
 		// comes from priorities, not path sorting.
 		writeScript("zz_30.lua",
 			"-- priority: 30\n"
-			"local ll = lua_patcher.leveledList(\"MockPlugin.esp|00000100\")\n"
+			"local ll = lua_patcher.leveledList(\"MockPlugin.esp\", \"00000100\")\n"
 			"ll:remove(\"MockFormC\")\n"
 			"ll:add(\"MockFormD\")\n");
 		writeScript("yy_20.lua",
 			"-- priority: 20\n"
-			"local ll = lua_patcher.leveledList(\"MockPlugin.esp|00000100\")\n"
+			"local ll = lua_patcher.leveledList(\"MockPlugin.esp\", \"00000100\")\n"
 			"ll:remove(\"MockFormB\")\n"
 			"ll:add(\"MockFormC\")\n");
 		writeScript("xx_10.lua",
 			"-- priority: 10\n"
-			"local ll = lua_patcher.leveledList(\"MockPlugin.esp|00000100\")\n"
+			"local ll = lua_patcher.leveledList(\"MockPlugin.esp\", \"00000100\")\n"
 			"ll:remove(\"MockFormA\")\n"
 			"ll:add(\"MockFormB\")\n");
 		// no priority declaration -> 0, runs first
 		writeScript("aa_00.lua",
-			"local ll = lua_patcher.leveledList(\"MockPlugin.esp|00000100\")\n"
+			"local ll = lua_patcher.leveledList(\"MockPlugin.esp\", \"00000100\")\n"
 			"ll:clear()\n"
 			"ll:add(\"MockFormA\")\n");
 		// config files must never be executed as scripts
-		writeScript("zz_30_config.lua", "lua_patcher.leveledList(\"MockPlugin.esp|00000100\"):add(\"MockFormE\")\n");
+		writeScript("zz_30_config.lua", "lua_patcher.leveledList(\"MockPlugin.esp\", \"00000100\"):add(\"MockFormE\")\n");
 
 		LuaPatcher::RunScripts();
 

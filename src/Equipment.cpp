@@ -61,25 +61,25 @@ namespace
 	}
 
 	// ---- keyword helpers (shared by Weapon/Armor) ----
-	RE::BGSKeyword* CheckKeyword(const sol::object& a_value)
+	RE::BGSKeyword* CheckKeyword(RE::TESForm* a_form)
 	{
-		auto* keyword = LuaPatcher::CheckForm(a_value)->As<RE::BGSKeyword>();
+		auto* keyword = a_form->As<RE::BGSKeyword>();
 		if (!keyword) {
 			throw sol::error{ "expected a keyword form" };
 		}
 		return keyword;
 	}
 
-	bool AddKeyword(RE::TESForm* a_form, const sol::object& a_value)
+	bool AddKeyword(RE::TESForm* a_form, RE::TESForm* a_keyword)
 	{
 		auto* keywordForm = a_form->As<RE::BGSKeywordForm>();
-		return keywordForm && keywordForm->AddKeyword(CheckKeyword(a_value));
+		return keywordForm && keywordForm->AddKeyword(CheckKeyword(a_keyword));
 	}
 
-	bool RemoveKeyword(RE::TESForm* a_form, const sol::object& a_value)
+	bool RemoveKeyword(RE::TESForm* a_form, RE::TESForm* a_keyword)
 	{
 		auto* keywordForm = a_form->As<RE::BGSKeywordForm>();
-		return keywordForm && keywordForm->RemoveKeyword(CheckKeyword(a_value));
+		return keywordForm && keywordForm->RemoveKeyword(CheckKeyword(a_keyword));
 	}
 
 	std::string_view ArmorTypeName(RE::BIPED_MODEL::ArmorType a_type)
@@ -213,7 +213,7 @@ namespace LuaPatcher
 						enchantable->formEnchanting = nullptr;
 						return;
 					}
-					auto* enchantment = CheckForm(a_value)->As<RE::EnchantmentItem>();
+					auto* enchantment = CheckFormValue(a_value)->As<RE::EnchantmentItem>();
 					if (!enchantment) {
 						throw sol::error{ "enchantment must be an enchantment form or nil" };
 					}
@@ -253,9 +253,13 @@ namespace LuaPatcher
 			"playable",
 			sol::property([](const LuaWeapon& a_form) { return a_form.form->As<RE::TESObjectWEAP>()->GetPlayable(); }),
 			"addKeyword",
-			[](LuaWeapon& a_form, const sol::object& a_keyword) { return AddKeyword(a_form.form, a_keyword); },
+			[](LuaWeapon& a_form, sol::variadic_args a_args) {
+				return AddKeyword(a_form.form, ParseFormRef(a_args, "addKeyword").form);
+			},
 			"removeKeyword",
-			[](LuaWeapon& a_form, const sol::object& a_keyword) { return RemoveKeyword(a_form.form, a_keyword); });
+			[](LuaWeapon& a_form, sol::variadic_args a_args) {
+				return RemoveKeyword(a_form.form, ParseFormRef(a_args, "removeKeyword").form);
+			});
 
 		a_lua.new_usertype<LuaArmor>(
 			"Armor", sol::base_classes, sol::bases<LuaForm>(), sol::meta_function::index,
@@ -277,7 +281,7 @@ namespace LuaPatcher
 						enchantable->formEnchanting = nullptr;
 						return;
 					}
-					auto* enchantment = CheckForm(a_value)->As<RE::EnchantmentItem>();
+					auto* enchantment = CheckFormValue(a_value)->As<RE::EnchantmentItem>();
 					if (!enchantment) {
 						throw sol::error{ "enchantment must be an enchantment form or nil" };
 					}
@@ -329,10 +333,14 @@ namespace LuaPatcher
 				}),
 
 			"addKeyword",
-			[](LuaArmor& a_form, const sol::object& a_keyword) { return AddKeyword(a_form.form, a_keyword); },
+			[](LuaArmor& a_form, sol::variadic_args a_args) {
+				return AddKeyword(a_form.form, ParseFormRef(a_args, "addKeyword").form);
+			},
 
 			"removeKeyword",
-			[](LuaArmor& a_form, const sol::object& a_keyword) { return RemoveKeyword(a_form.form, a_keyword); });
+			[](LuaArmor& a_form, sol::variadic_args a_args) {
+				return RemoveKeyword(a_form.form, ParseFormRef(a_args, "removeKeyword").form);
+			});
 
 		sol::table patcher = a_lua["lua_patcher"].get<sol::table>();
 		patcher["allWeapons"] = &AllWeapons;

@@ -109,26 +109,35 @@ namespace
 		lua_Integer count = 1;
 	};
 
-	LevelCount ParseLevelCount(const sol::object& a_level, const sol::object& a_count, const std::string_view& a_method)
+	// Reads a variadic argument as an optional object (nullopt when absent).
+	sol::optional<sol::object> VariadicArg(const sol::variadic_args& a_args, std::size_t a_index)
+	{
+		return a_index < a_args.size() ? sol::optional<sol::object>{ a_args.get<sol::object>(a_index) } : sol::nullopt;
+	}
+
+	LevelCount ParseLevelCount(sol::optional<sol::object> a_level, sol::optional<sol::object> a_count,
+		const std::string_view& a_method)
 	{
 		LevelCount result;
-		if (a_level.is<sol::nil_t>()) {
+		if (!a_level) {
 			return result;
 		}
 
-		if (a_level.is<double>()) {
-			result.level = static_cast<lua_Integer>(a_level.as<double>());
-			if (!a_count.is<sol::nil_t>()) {
-				if (!a_count.is<double>()) {
+		const sol::object level = *a_level;
+		if (level.is<double>()) {
+			result.level = static_cast<lua_Integer>(level.as<double>());
+			if (a_count) {
+				const sol::object count = *a_count;
+				if (!count.is<double>()) {
 					throw sol::error{ fmt::format("bad argument #3 to '{}' (expected a count number)", a_method) };
 				}
-				result.count = static_cast<lua_Integer>(a_count.as<double>());
+				result.count = static_cast<lua_Integer>(count.as<double>());
 			}
 			return result;
 		}
 
-		if (a_level.is<sol::table>()) {
-			const auto options = a_level.as<sol::table>();
+		if (level.is<sol::table>()) {
+			const auto options = level.as<sol::table>();
 			result.level = GetNumberOption(options, "level", result.level);
 			result.count = GetNumberOption(options, "count", result.count);
 			return result;
@@ -151,20 +160,21 @@ namespace
 		bool hasMaxCount = false;
 	};
 
-	Bounds ParseBounds(const sol::object& a_options)
+	Bounds ParseBounds(sol::optional<sol::object> a_options)
 	{
 		Bounds bounds;
-		if (a_options.is<sol::nil_t>()) {
+		if (!a_options) {
 			return bounds;
 		}
 
-		if (!a_options.is<sol::table>()) {
+		const sol::object options = *a_options;
+		if (!options.is<sol::table>()) {
 			throw sol::error{ "bad argument #2 to 'remove' (expected an options table or nothing)" };
 		}
 
-		const auto options = a_options.as<sol::table>();
+		const auto table = options.as<sol::table>();
 
-		if (const auto value = options.get<sol::optional<sol::object>>("minLevel")) {
+		if (const auto value = table.get<sol::optional<sol::object>>("minLevel")) {
 			if (!value->is<double>()) {
 				throw sol::error{ "bad options-table value 'minLevel' (expected a number)" };
 			}
@@ -172,7 +182,7 @@ namespace
 			bounds.hasMinLevel = true;
 		}
 
-		if (const auto value = options.get<sol::optional<sol::object>>("maxLevel")) {
+		if (const auto value = table.get<sol::optional<sol::object>>("maxLevel")) {
 			if (!value->is<double>()) {
 				throw sol::error{ "bad options-table value 'maxLevel' (expected a number)" };
 			}
@@ -180,7 +190,7 @@ namespace
 			bounds.hasMaxLevel = true;
 		}
 
-		if (const auto value = options.get<sol::optional<sol::object>>("minCount")) {
+		if (const auto value = table.get<sol::optional<sol::object>>("minCount")) {
 			if (!value->is<double>()) {
 				throw sol::error{ "bad options-table value 'minCount' (expected a number)" };
 			}
@@ -188,7 +198,7 @@ namespace
 			bounds.hasMinCount = true;
 		}
 
-		if (const auto value = options.get<sol::optional<sol::object>>("maxCount")) {
+		if (const auto value = table.get<sol::optional<sol::object>>("maxCount")) {
 			if (!value->is<double>()) {
 				throw sol::error{ "bad options-table value 'maxCount' (expected a number)" };
 			}
@@ -257,10 +267,10 @@ namespace
 
 	// ---- lua_patcher leveled list functions ----
 
-	sol::object LeveledListGet(sol::this_state a_state, const sol::object& a_form)
+	sol::object LeveledListGet(sol::this_state a_state, sol::variadic_args a_args)
 	{
 		sol::state_view lua(a_state);
-		auto* form = LuaPatcher::CheckForm(a_form);
+		auto* form = LuaPatcher::ParseFormRef(a_args, "leveledList").form;
 		if (!form->As<RE::TESLevItem>() && !form->As<RE::TESLevCharacter>() && !form->As<RE::TESLevSpell>()) {
 			throw sol::error{ "form is not a leveled item, leveled character or leveled spell list" };
 		}
@@ -329,10 +339,10 @@ namespace
 		return index;
 	}
 
-	sol::object FindLeveledListsContaining(sol::this_state a_state, const sol::object& a_form)
+	sol::object FindLeveledListsContaining(sol::this_state a_state, sol::variadic_args a_args)
 	{
 		sol::state_view lua(a_state);
-		auto* form = LuaPatcher::CheckForm(a_form);
+		auto* form = LuaPatcher::ParseFormRef(a_args, "findLeveledListsContaining").form;
 		const auto& index = LeveledListIndexCache();
 
 		sol::table result = lua.create_table(0, 0);
@@ -380,7 +390,7 @@ namespace LuaPatcher
 					ToLeveledList(a_list)->chanceGlobal = nullptr;
 					return;
 				}
-				auto* form = CheckForm(a_value);
+				auto* form = CheckFormValue(a_value);
 				auto* global = form->As<RE::TESGlobal>();
 				if (!global) {
 					throw sol::error{ "chanceGlobal must be a global form or nil" };
@@ -429,35 +439,37 @@ namespace LuaPatcher
 
 	void RegisterLeveledListOperations(sol::usertype<LuaLeveledList>& a_type)
 	{
-		a_type["add"] = [](LuaLeveledList& a_list, const sol::object& a_form, const sol::object& a_level,
-							const sol::object& a_count) {
+		a_type["add"] = [](LuaLeveledList& a_list, sol::variadic_args a_args) {
 			auto* listForm = a_list.form;
 			auto* list = ToLeveledList(a_list);
-			auto* form = CheckForm(a_form);
-			auto args = ParseLevelCount(a_level, a_count, "add");
+			const auto ref = ParseFormRef(a_args, "add");
+			auto* form = ref.form;
+			auto args = ParseLevelCount(VariadicArg(a_args, ref.consumed), VariadicArg(a_args, ref.consumed + 1), "add");
 
 			if (InsertEntry(list, form, args.level, args.count, true)) {
 				logger::debug("LuaPatcher: {:08X} added Form {:08X}", listForm->formID, form->formID);
 			}
 		};
 
-		a_type["addIfAbsent"] = [](LuaLeveledList& a_list, const sol::object& a_form, const sol::object& a_level,
-									const sol::object& a_count) {
+		a_type["addIfAbsent"] = [](LuaLeveledList& a_list, sol::variadic_args a_args) {
 			auto* listForm = a_list.form;
 			auto* list = ToLeveledList(a_list);
-			auto* form = CheckForm(a_form);
-			auto args = ParseLevelCount(a_level, a_count, "addIfAbsent");
+			const auto ref = ParseFormRef(a_args, "addIfAbsent");
+			auto* form = ref.form;
+			auto args = ParseLevelCount(
+				VariadicArg(a_args, ref.consumed), VariadicArg(a_args, ref.consumed + 1), "addIfAbsent");
 
 			const bool added = InsertEntry(list, form, args.level, args.count, false);
 			logger::debug("LuaPatcher: {:08X} addIfAbsent Form {:08X} added: {}", listForm->formID, form->formID,
 				added);
 		};
 
-		a_type["remove"] = [](LuaLeveledList& a_list, const sol::object& a_form, const sol::object& a_options) {
+		a_type["remove"] = [](LuaLeveledList& a_list, sol::variadic_args a_args) {
 			auto* listForm = a_list.form;
 			auto* list = ToLeveledList(a_list);
-			auto* delForm = CheckForm(a_form);
-			auto bounds = ParseBounds(a_options);
+			const auto ref = ParseFormRef(a_args, "remove");
+			auto* delForm = ref.form;
+			auto bounds = ParseBounds(VariadicArg(a_args, ref.consumed));
 
 			const auto removed = EraseMatching(list, [&](const RE::LEVELED_OBJECT& x) {
 				return x.form == delForm && MatchesBounds(bounds, x.level, x.count);
@@ -504,10 +516,10 @@ namespace LuaPatcher
 
 	void RegisterLeveledListMutators(sol::usertype<LuaLeveledList>& a_type)
 	{
-		a_type["removeByKeyword"] = [](LuaLeveledList& a_list, const sol::object& a_keyword) {
+		a_type["removeByKeyword"] = [](LuaLeveledList& a_list, sol::variadic_args a_args) {
 			auto* listForm = a_list.form;
 			auto* list = ToLeveledList(a_list);
-			auto* form = CheckForm(a_keyword);
+			auto* form = ParseFormRef(a_args, "removeByKeyword").form;
 			auto* keyword = form->As<RE::BGSKeyword>();
 			if (!keyword) {
 				throw sol::error{ "expected a keyword form" };
@@ -521,11 +533,18 @@ namespace LuaPatcher
 				keyword->formID);
 		};
 
-		a_type["replace"] = [](LuaLeveledList& a_list, const sol::object& a_from, const sol::object& a_to) {
+		a_type["replace"] = [](LuaLeveledList& a_list, sol::variadic_args a_args) {
 			auto* listForm = a_list.form;
 			auto* list = ToLeveledList(a_list);
-			auto* from = CheckForm(a_from);
-			auto* to = CheckForm(a_to);
+			const auto fromRef = ParseFormRef(a_args, "replace");
+			if (a_args.size() <= fromRef.consumed) {
+				throw sol::error{ "bad argument to 'replace' (missing replacement form reference)" };
+			}
+			const auto toRef =
+				ParseFormRef(sol::variadic_args(a_args.lua_state(), a_args.stack_index() + static_cast<int>(fromRef.consumed)),
+					"replace");
+			auto* from = fromRef.form;
+			auto* to = toRef.form;
 
 			auto entries = SnapshotEntries(list);
 			std::size_t replaced = 0;
@@ -544,10 +563,15 @@ namespace LuaPatcher
 				to->formID, replaced);
 		};
 
-		a_type["multiplyCount"] = [](LuaLeveledList& a_list, const sol::object& a_form, double a_factor) {
+		a_type["multiplyCount"] = [](LuaLeveledList& a_list, sol::variadic_args a_args) {
 			auto* listForm = a_list.form;
 			auto* list = ToLeveledList(a_list);
-			auto* form = CheckForm(a_form);
+			const auto ref = ParseFormRef(a_args, "multiplyCount");
+			auto* form = ref.form;
+			if (a_args.size() <= ref.consumed || !a_args.get<sol::object>(ref.consumed).is<double>()) {
+				throw sol::error{ "bad argument #2 to 'multiplyCount' (expected a factor number)" };
+			}
+			const double a_factor = a_args.get<sol::object>(ref.consumed).as<double>();
 
 			auto entries = SnapshotEntries(list);
 			std::size_t changed = 0;
@@ -565,9 +589,9 @@ namespace LuaPatcher
 				form->formID, a_factor, changed);
 		};
 
-		a_type["has"] = [](const LuaLeveledList& a_list, const sol::object& a_form) {
+		a_type["has"] = [](const LuaLeveledList& a_list, sol::variadic_args a_args) {
 			auto* list = ToLeveledList(a_list);
-			auto* form = CheckForm(a_form);
+			auto* form = ParseFormRef(a_args, "has").form;
 			const bool found = std::ranges::any_of(list->entries,
 				[form](const RE::LEVELED_OBJECT& x) { return x.form->formID == form->formID; });
 			return found;

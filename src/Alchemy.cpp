@@ -67,8 +67,8 @@ namespace LuaPatcher
 				Effects::SetEffectList(ToIngredient(a_form), a_list);
 			},
 			"addEffect",
-			[](LuaIngredient& a_form, const sol::object& a_base, const sol::object& a_options) {
-				return Effects::AddEffect(ToIngredient(a_form), a_base, a_options);
+			[](LuaIngredient& a_form, sol::variadic_args a_args) {
+				return Effects::AddEffect(ToIngredient(a_form), a_args);
 			},
 			"clearEffects", [](LuaIngredient& a_form) { Effects::ClearEffects(ToIngredient(a_form)); });
 
@@ -92,8 +92,8 @@ namespace LuaPatcher
 			"setEffects",
 			[](LuaPotion& a_form, const sol::object& a_list) { Effects::SetEffectList(ToPotion(a_form), a_list); },
 			"addEffect",
-			[](LuaPotion& a_form, const sol::object& a_base, const sol::object& a_options) {
-				return Effects::AddEffect(ToPotion(a_form), a_base, a_options);
+			[](LuaPotion& a_form, sol::variadic_args a_args) {
+				return Effects::AddEffect(ToPotion(a_form), a_args);
 			},
 			"clearEffects", [](LuaPotion& a_form) { Effects::ClearEffects(ToPotion(a_form)); });
 

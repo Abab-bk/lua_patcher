@@ -14,10 +14,9 @@ namespace
 		return a_form.form->As<RE::TESContainer>();
 	}
 
-	RE::TESBoundObject* CheckBoundObject(const sol::object& a_value)
+	RE::TESBoundObject* CheckBoundObject(RE::TESForm* a_form)
 	{
-		auto* form = LuaPatcher::CheckForm(a_value);
-		auto* bound = form->As<RE::TESBoundObject>();
+		auto* bound = a_form->As<RE::TESBoundObject>();
 		if (!bound) {
 			throw sol::error{ "expected a bound object (item) form" };
 		}
@@ -121,7 +120,7 @@ namespace LuaPatcher
 					}
 					n = static_cast<lua_Integer>(count->as<double>());
 				}
-				planned.emplace_back(CheckBoundObject(*form), static_cast<std::int32_t>(n));
+				planned.emplace_back(CheckBoundObject(LuaPatcher::CheckFormValue(*form)), static_cast<std::int32_t>(n));
 			}
 
 			std::vector<RE::TESBoundObject*> removeOrder;
@@ -138,34 +137,35 @@ namespace LuaPatcher
 			}
 		};
 
-		type["addItem"] = [](LuaContainer& a_form, const sol::object& a_formOrId, const sol::object& a_count) {
+		type["addItem"] = [](LuaContainer& a_form, sol::variadic_args a_args) {
 			auto* container = ToContainer(a_form);
-			auto* bound = CheckBoundObject(a_formOrId);
+			const auto ref = LuaPatcher::ParseFormRef(a_args, "addItem");
+			auto* bound = CheckBoundObject(ref.form);
 
 			lua_Integer count = 1;
-			if (!a_count.is<sol::nil_t>()) {
-				if (!a_count.is<double>()) {
-					throw sol::error{ "bad argument #2 to 'addItem' (expected a count number)" };
+			if (a_args.size() > ref.consumed && !a_args.get<sol::object>(ref.consumed).is<sol::nil_t>()) {
+				if (!a_args.get<sol::object>(ref.consumed).is<double>()) {
+					throw sol::error{ "bad argument to 'addItem' (expected a count number)" };
 				}
-				count = static_cast<lua_Integer>(a_count.as<double>());
+				count = static_cast<lua_Integer>(a_args.get<sol::object>(ref.consumed).as<double>());
 			}
 			if (count < 1) {
-				throw sol::error{ "bad argument #2 to 'addItem' (count must be >= 1)" };
+				throw sol::error{ "bad argument to 'addItem' (count must be >= 1)" };
 			}
 			container->AddObjectToContainer(bound, static_cast<std::int32_t>(count), nullptr);
 		};
 
-		type["removeItem"] = [](LuaContainer& a_form, const sol::object& a_formOrId) {
+		type["removeItem"] = [](LuaContainer& a_form, sol::variadic_args a_args) {
 			auto* container = ToContainer(a_form);
-			auto* bound = CheckBoundObject(a_formOrId);
+			auto* bound = CheckBoundObject(LuaPatcher::ParseFormRef(a_args, "removeItem").form);
 			const auto before = container->numContainerObjects;
 			RemoveAllOf(container, bound);
 			return container->numContainerObjects != before;
 		};
 
-		type["has"] = [](const LuaContainer& a_form, const sol::object& a_formOrId) {
+		type["has"] = [](const LuaContainer& a_form, sol::variadic_args a_args) {
 			auto* container = ToContainer(a_form);
-			auto* form = CheckForm(a_formOrId);
+			auto* form = LuaPatcher::ParseFormRef(a_args, "has").form;
 			for (std::uint32_t i = 0; i < container->numContainerObjects; ++i) {
 				if (const auto entry = container->containerObjects[i]; entry && entry->obj == form) {
 					return true;

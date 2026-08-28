@@ -73,13 +73,41 @@ namespace LuaPatcher
 		throw sol::error{ "unknown property" };
 	}
 
-	// Resolves a "Plugin.esm|000123" / "Plugin.esm|123" / EditorID identifier
-	// (light plugins mask to 0xFFF). Results are cached per identifier.
-	RE::TESForm* LookupFormByIdentifier(const std::string_view& a_identifier);
+	// Resolves a form reference given as two strings: plugin name + hex local
+	// formID ("000123" for light plugins, "00012345" for full plugins; the
+	// masked local part is read as-is). Results are cached per pair.
+	RE::TESForm* LookupFormByPluginFormId(const std::string_view& a_plugin, const std::string_view& a_formId);
 
-	// Accepts an identifier string or any form userdata (Form/LeveledList/Weapon/Armor).
-	// Raises a Lua argument error if the value does not resolve to a loaded form.
-	RE::TESForm* CheckForm(const sol::object& a_value);
+	// Resolves a bare EditorID string. Results are cached per editorID.
+	RE::TESForm* LookupFormByEditorId(const std::string_view& a_editorId);
+
+	// A form reference as parsed from the leading arguments of a variadic call.
+	struct FormRef
+	{
+		RE::TESForm* form = nullptr;
+		std::size_t consumed = 1;  // 2 when the caller used the ("Plugin", "000123") pair form
+	};
+
+	// Parses a form reference from the leading arguments of a call:
+	//   (Form)                    single form object
+	//   ("EditorID")              single editorID string
+	//   ("Plugin.esp", "000123")  plugin + hex local formID pair
+	// Raises a Lua error with method/argument context when the reference is
+	// missing or does not resolve to a loaded form.
+	FormRef ParseFormRef(const sol::variadic_args& a_args, std::string_view a_method);
+
+	// Lenient leading-argument form reference lookup (used by getForm): mirrors
+	// ParseFormRef but returns nullptr on a miss instead of raising.
+	RE::TESForm* LookupFormRef(const sol::variadic_args& a_args, std::string_view a_method);
+
+	// Resolves a single-value form reference (table entries, property values):
+	// a Form object, an "EditorID" string, or a { "Plugin", "000123" } pair
+	// table. Raises a Lua error when the value does not resolve to a loaded form.
+	RE::TESForm* CheckFormValue(const sol::object& a_value);
+
+	// Lenient single-value lookup (used by getForm): returns nullptr instead of
+	// raising when the value does not resolve.
+	RE::TESForm* LookupFormValue(const sol::object& a_value);
 
 	// Returns the TESForm stored in any form userdata at a_index (no identifier strings).
 	RE::TESForm* ToAnyForm(const sol::object& a_value);

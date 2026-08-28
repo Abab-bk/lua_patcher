@@ -1,5 +1,5 @@
 -- LuaPatcher example: GearInjection — config-driven equipment injection
--- priority: 40 (last: loot injection after keywords/sets are fixed)
+-- priority: 40
 --
 -- The successor to EquipmentInjection (which it fully replaces): everything is
 -- driven by a single config table, so one script covers every "drop this mod's

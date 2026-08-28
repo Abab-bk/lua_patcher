@@ -239,9 +239,9 @@ namespace
 		}
 	}
 
-	RE::BGSKeyword* CheckKeyword(const sol::object& a_value)
+	RE::BGSKeyword* CheckKeyword(RE::TESForm* a_form)
 	{
-		auto* keyword = LuaPatcher::CheckForm(a_value)->As<RE::BGSKeyword>();
+		auto* keyword = a_form->As<RE::BGSKeyword>();
 		if (!keyword) {
 			throw sol::error{ "expected a keyword form" };
 		}
@@ -336,12 +336,12 @@ namespace LuaPatcher
 					a_form.form->As<RE::SpellItem>()->data.range = static_cast<float>(a_value);
 				}),
 			"addKeyword",
-			[](LuaSpell& a_form, const sol::object& a_keyword) {
-				return a_form.form->As<RE::SpellItem>()->AddKeyword(CheckKeyword(a_keyword));
+			[](LuaSpell& a_form, sol::variadic_args a_args) {
+				return a_form.form->As<RE::SpellItem>()->AddKeyword(CheckKeyword(ParseFormRef(a_args, "addKeyword").form));
 			},
 			"removeKeyword",
-			[](LuaSpell& a_form, const sol::object& a_keyword) {
-				return a_form.form->As<RE::SpellItem>()->RemoveKeyword(CheckKeyword(a_keyword));
+			[](LuaSpell& a_form, sol::variadic_args a_args) {
+				return a_form.form->As<RE::SpellItem>()->RemoveKeyword(CheckKeyword(ParseFormRef(a_args, "removeKeyword").form));
 			});
 
 		a_lua.new_usertype<LuaMagicEffect>(
@@ -448,12 +448,12 @@ namespace LuaPatcher
 				return a_form.form->As<RE::EffectSetting>()->IsDetrimental();
 			}),
 			"addKeyword",
-			[](LuaMagicEffect& a_form, const sol::object& a_keyword) {
-				return a_form.form->As<RE::EffectSetting>()->AddKeyword(CheckKeyword(a_keyword));
+			[](LuaMagicEffect& a_form, sol::variadic_args a_args) {
+				return a_form.form->As<RE::EffectSetting>()->AddKeyword(CheckKeyword(ParseFormRef(a_args, "addKeyword").form));
 			},
 			"removeKeyword",
-			[](LuaMagicEffect& a_form, const sol::object& a_keyword) {
-				return a_form.form->As<RE::EffectSetting>()->RemoveKeyword(CheckKeyword(a_keyword));
+			[](LuaMagicEffect& a_form, sol::variadic_args a_args) {
+				return a_form.form->As<RE::EffectSetting>()->RemoveKeyword(CheckKeyword(ParseFormRef(a_args, "removeKeyword").form));
 			});
 
 		sol::table patcher = a_lua["lua_patcher"].get<sol::table>();

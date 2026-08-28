@@ -47,7 +47,7 @@ namespace
 			if (word->is<sol::nil_t>()) {
 				result.word = nullptr;
 			} else {
-				auto* form = LuaPatcher::CheckForm(*word);
+				auto* form = LuaPatcher::CheckFormValue(*word);
 				result.word = form->As<RE::TESWordOfPower>();
 				if (!result.word) {
 					throw sol::error{ "'word' must be a word of power form" };
@@ -60,7 +60,7 @@ namespace
 			if (spell->is<sol::nil_t>()) {
 				result.spell = nullptr;
 			} else {
-				auto* form = LuaPatcher::CheckForm(*spell);
+				auto* form = LuaPatcher::CheckFormValue(*spell);
 				result.spell = form->As<RE::SpellItem>();
 				if (!result.spell) {
 					throw sol::error{ "'spell' must be a spell form" };

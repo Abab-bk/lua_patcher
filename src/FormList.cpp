@@ -38,10 +38,10 @@ namespace
 
 	// ---- lua_patcher form list functions ----
 
-	sol::object FormListGet(sol::this_state a_state, const sol::object& a_form)
+	sol::object FormListGet(sol::this_state a_state, sol::variadic_args a_args)
 	{
 		sol::state_view lua(a_state);
-		auto* form = LuaPatcher::CheckForm(a_form);
+		auto* form = LuaPatcher::ParseFormRef(a_args, "formList").form;
 		if (!form->As<RE::BGSListForm>()) {
 			throw sol::error{ "form is not a form list" };
 		}
@@ -88,9 +88,9 @@ namespace LuaPatcher
 		};
 
 		// Set semantics: adding an already-present form is a no-op (false).
-		type["add"] = [](LuaFormList& a_list, const sol::object& a_form) {
+		type["add"] = [](LuaFormList& a_list, sol::variadic_args a_args) {
 			auto* list = ToFormList(a_list);
-			auto* form = CheckForm(a_form);
+			auto* form = ParseFormRef(a_args, "add").form;
 			if (list->HasForm(form)) {
 				return false;
 			}
@@ -98,9 +98,9 @@ namespace LuaPatcher
 			return true;
 		};
 
-		type["remove"] = [](LuaFormList& a_list, const sol::object& a_form) {
+		type["remove"] = [](LuaFormList& a_list, sol::variadic_args a_args) {
 			auto* list = ToFormList(a_list);
-			auto* form = CheckForm(a_form);
+			auto* form = ParseFormRef(a_args, "remove").form;
 
 			auto forms = SnapshotForms(list);
 			const auto before = forms.size();
@@ -114,9 +114,9 @@ namespace LuaPatcher
 			return false;
 		};
 
-		type["has"] = [](const LuaFormList& a_list, const sol::object& a_form) {
+		type["has"] = [](const LuaFormList& a_list, sol::variadic_args a_args) {
 			auto* list = ToFormList(a_list);
-			auto* form = CheckForm(a_form);
+			auto* form = ParseFormRef(a_args, "has").form;
 			return list->HasForm(form);
 		};
 

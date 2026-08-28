@@ -68,7 +68,7 @@ MODULE_NOTES = {
     "log": "Joins arguments with tabs (tostring on each) into the plugin log",
     "warn": "Like log, at warn level",
     "error": "Like log, at error level",
-    "getForm": 'Resolves `"Mod.esm|000123"` / EditorID; never raises',
+    "getForm": "Resolves a form reference; never raises",
     "isPluginInstalled": "Is the plugin in the load order",
     "tryLoadConfig": "Loads sibling `Scripts/<name>_config.lua`; nil if missing/failed; raises on invalid names",
     "isQuestReferenced": "True when any loaded quest alias references the form (forced refs, created objects, unique actors); protects quest gear/NPCs from randomizers",
@@ -92,6 +92,45 @@ MODULE_NOTES = {
     "findLeveledListsContaining": "Snapshot reverse index: lists referencing the form in the game's pristine data (patches made this run are not visible)",
     "formList": "Raises if the form is not a form list",
     "allFormLists": "Every `BGSListForm`",
+}
+
+# Hand-maintained argument lists for functions registered as variadic lambdas
+# (form references accept several shapes; see the Conventions section).
+MODULE_ARGS = {
+    "getForm": "formRef",
+    "leveledList": "formRef",
+    "formList": "formRef",
+    "findLeveledListsContaining": "formRef",
+    "isQuestReferenced": "formRef",
+}
+
+# Hand-maintained argument lists for usertype methods (variadic form refs).
+METHOD_ARGS = {
+    "Form.hasKeyword": "kwRef",
+    "Weapon.addKeyword": "kwRef",
+    "Weapon.removeKeyword": "kwRef",
+    "Armor.addKeyword": "kwRef",
+    "Armor.removeKeyword": "kwRef",
+    "Spell.addKeyword": "kwRef",
+    "Spell.removeKeyword": "kwRef",
+    "MagicEffect.addKeyword": "kwRef",
+    "MagicEffect.removeKeyword": "kwRef",
+    "LeveledList.add": "formRef, level?, count?",
+    "LeveledList.addIfAbsent": "formRef, level?, count?",
+    "LeveledList.remove": "formRef, options?",
+    "LeveledList.removeByKeyword": "kwRef",
+    "LeveledList.replace": "fromRef, toRef",
+    "LeveledList.multiplyCount": "formRef, factor",
+    "LeveledList.has": "formRef",
+    "FormList.add": "formRef",
+    "FormList.remove": "formRef",
+    "FormList.has": "formRef",
+    "Container.addItem": "formRef, count?",
+    "Container.removeItem": "formRef",
+    "Container.has": "formRef",
+    "Ingredient.addEffect": "baseRef, options?",
+    "Potion.addEffect": "baseRef, options?",
+    "Enchantment.addEffect": "baseRef, options?",
 }
 
 # Hand-maintained return values for the lua_patcher module functions.
@@ -169,7 +208,7 @@ MEMBER_NOTES = {
     "Form.type": 'e.g. `"Weapon"`, `"Armor"`, `"Spell"`, `"LeveledItem"`, ...',
     "Form.editorId": "From the game's editorID table",
     "Form.name": "Full name",
-    "Form.identifier": '`"Plugin.esm|000123"` form',
+    "Form.identifier": '`"Plugin.esm|000123"` display string (not parseable)',
     "Form.plugin": "Source plugin",
     "Form.value": "If the form has a value",
     "Form.weight": "If the form has a weight",
@@ -227,13 +266,15 @@ and the entries of `entries()` are snapshots: patches applied during this run ar
 not reflected.
 
 ```lua
-local ll = lua_patcher.leveledList("LuaPatcherExample.esp|00001000")
+local ll = lua_patcher.leveledList("LuaPatcherExample.esp", "00001000")
 
-ll:add("LuaPatcherExample.esp|00002000", 5, 2)          -- positional
-ll:add("LuaPatcherExample.esp|00002001", { level = 10 })-- options table
+ll:add("LuaPatcherExample.esp", "00002000", 5, 2)          -- plugin + local formID
+ll:add("LuaPatcherExample.esp", "00002001", { level = 10 })-- options table
+ll:add("LItemPotion", 1, 1)                                 -- editorID string
+ll:add(ll:entries()[1].form, 3)                             -- form object
 
 -- remove every entry of the form with level >= 5 and count <= 2
-ll:remove("LuaPatcherExample.esp|00002002", { minLevel = 5, maxCount = 2 })
+ll:remove("LuaPatcherExample.esp", "00002002", { minLevel = 5, maxCount = 2 })
 
 -- predicate: full Lua power
 ll:removeIf(function(e)
@@ -258,8 +299,10 @@ conditions.
 
 ## Conventions
 
-- **Form identifiers**: a string `"Plugin.esm|000123"` (mod name + hex local
-  formID; light plugins use the 0xFFF-masked ID) or a bare `EditorID`.
+- **Form references**: a form object, an `"EditorID"` string, a
+  `("Plugin.esm", "000123")` argument pair (plugin name + hex local formID;
+  light plugins use the 0xFFF-masked ID), or a `{ "Plugin.esm", "000123" }`
+  pair table for table fields. No `"Plugin|000123"` string splitting.
 - **Errors**: invalid arguments and failed lookups raise a Lua error (catchable
   with `pcall`). `lua_patcher.getForm` is the exception: it returns `nil` for a
   miss instead of raising.
@@ -279,9 +322,8 @@ Data/SKSE/Plugins/LuaPatcher/Scripts/
 
 Scripts run in priority order: a `-- priority: N` comment (first 512 bytes of the
 file) sets the execution order, lowest first; scripts without a declaration get
-priority 0 and run first. Equal priorities fall back to path order. Example
-pipeline: rebalance stats (10) -> fix keywords (20) -> join tempering sets (30)
--> inject into leveled lists (40).
+priority 0 and run first. Equal priorities fall back to path order. EverythingRandomizer
+declares priority 50 so user scripts in the 10-40 range run before it.
 
 Config chunks return a table; `tryLoadConfig` returns it (or nil when the file
 is missing or fails to load). Scripts typically merge it over defaults:
@@ -598,7 +640,9 @@ def esc(s: str) -> str:
 
 
 def render_method(name: str, method: dict, receiver: str, type_name: str) -> str:
-    args = ", ".join(method["args"]) if method["args"] else ""
+    args = METHOD_ARGS.get(f"{type_name}.{name}")
+    if args is None:
+        args = ", ".join(method["args"]) if method["args"] else ""
     returns = METHOD_RETURNS.get(f"{type_name}.{name}", "—")
     return f"| `{receiver}:{name}({args})` | {returns} | |"
 
@@ -664,7 +708,7 @@ def main() -> int:
             elif kind == "lambda":
                 target["methods"].append(parse_method(m.group(1), val[0][1], val[0][2]))
 
-        for m in re.finditer(r'(?:a_lua|patcher)\[\s*"(\w+)"\s*\]\s*=\s*((?:&?[A-Za-z_]\w*)|"[^"]*");', text):
+        for m in re.finditer(r'(?:a_lua|patcher)\[\s*"(\w+)"\s*\]\s*=\s*((?:&?[A-Za-z_]\w*)|"[^"]*"|\[)', text):
             if m.group(1) == "lua_patcher":
                 continue
             value = m.group(2)
@@ -693,6 +737,8 @@ def main() -> int:
                     var = vm.group(1) if vm else p.split()[-1]
                     args.append({"a_identifier": "identifier", "a_name": "name", "a_form": "formOrId"}.get(var, var))
                 display = name + "(" + ", ".join(args) + ")"
+        if name in MODULE_ARGS:
+            display = name + "(" + MODULE_ARGS[name] + ")"
         returns = MODULE_RETURNS.get(name, "?")
         if name == "version":
             returns = "string"

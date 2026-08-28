@@ -14,6 +14,8 @@ Usage:
 
     invoke harness                           configure + build + run the Lua binding smoke harness
 
+    invoke docs                               regenerate docs/API.md from the src/ registrations
+
     invoke package                           build (if needed) + create distributable zip
     invoke package --build-dir DIR           use existing build dir instead of building
     invoke package --version X.Y.Z           override version
@@ -240,6 +242,14 @@ def harness(c: Context):
         c.run("ctest --test-dir build/harness --output-on-failure", echo=True)
 
     print("\nHarness checks passed")
+
+
+@task
+def docs(c: Context):
+    """Regenerate docs/API.md from the sol2 registrations in src/."""
+    _ensure_root()
+    with c.cd(str(ROOT)):
+        c.run("python3 docs/gen_api.py", echo=True)
 
 
 @task

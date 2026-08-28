@@ -46,3 +46,10 @@ The harness force-includes `src/PCH.h` (`-include`, mirroring the plugin's
 (`pkg-config`). The mocks must stay in sync with the CommonLibSSE API surface the
 bindings use — when a binding starts calling a new RE method, mirror it in
 `test/harness/mocks/RE/Skyrim.h` or the harness build breaks.
+
+## Documentation
+
+`docs/API.md` is generated from the sol2 registration calls in `src/*.cpp` by
+`docs/gen_api.py` (prose and explanatory notes live in the generator). After
+changing the Lua API, regenerate with `invoke docs`; never edit `docs/API.md` by
+hand.

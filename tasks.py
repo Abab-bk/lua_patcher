@@ -6,9 +6,9 @@ Usage:
     invoke build                             configure + build (release-linux)
     
     invoke deploy                            build + deploy the DLL only
-    invoke deploy --copy-example             also copy default example (EquipmentInjection)
+    invoke deploy --copy-example             also copy default example (GearInjection)
     invoke deploy --copy-all-examples        also copy every distributable example
-    invoke deploy --example NAME             choose which single example to copy (default: EquipmentInjection)
+    invoke deploy --example NAME             choose which single example to copy (default: GearInjection)
     
     invoke format                            format C++ sources with clang-format
 
@@ -20,7 +20,7 @@ Usage:
     invoke package --build-dir DIR           use existing build dir instead of building
     invoke package --version X.Y.Z           override version
 
-    invoke package-example                   package EquipmentInjection as standalone mod (alias: packageExample)
+    invoke package-example                   package GearInjection as standalone mod (alias: packageExample)
     invoke package-example --example NAME    package any distributable example
     invoke package-example --version X.Y.Z   override version
     invoke package-example --out DIR         override output dir/file (default: dist/)
@@ -52,12 +52,12 @@ CONFIG_RELATIVE = Path("SKSE/Plugins/LuaPatcher/Config")
 
 # Layout:
 #   examples/
-#     EquipmentInjection/
-#       EquipmentInjection.lua
-#       EquipmentInjection_config.lua
+#     GearInjection/
+#       GearInjection.lua
+#       GearInjection_config.lua
 #     snippets/   -> NOT distributable, reference only
 EXAMPLES_ROOT = ROOT / "examples"
-DEFAULT_EXAMPLE = "EquipmentInjection"
+DEFAULT_EXAMPLE = "GearInjection"
 
 
 def _load_env() -> None:
@@ -345,19 +345,19 @@ def package_example(
     version: str = "",
     out: str = "",
 ):
-    """Create a distributable zip for a single example mod (default: EquipmentInjection).
+    """Create a distributable zip for a single example mod (default: GearInjection).
 
     Packages examples/<Name>/ as a standalone mod with flat sibling layout:
         SKSE/Plugins/LuaPatcher/Scripts/<Name>.lua
         SKSE/Plugins/LuaPatcher/Scripts/<Name>_config.lua  (same directory, mirrors examples/)
 
-    --example NAME  example folder/name to package (default: EquipmentInjection)
+    --example NAME  example folder/name to package (default: GearInjection)
     --version X.Y.Z override version (default: git tag or CMakeLists.txt)
     --out DIR       output dir or file (default: dist/<Name>-<ver>.zip)
 
     Examples:
         invoke package-example
-        invoke package-example --example EquipmentInjection
+        invoke package-example --example GearInjection
         invoke package-example --example MagicTweak --version 0.0.1 --out dist/
         invoke packageExample --example WeaponArmorTweak
     """
@@ -480,7 +480,7 @@ def deploy(
 ):
     """Build and deploy the mod.
 
-    With --copy-example copy a single example (default: EquipmentInjection,
+    With --copy-example copy a single example (default: GearInjection,
     use --example NAME to choose).
     With --copy-all-examples copy every distributable example in examples/.
     """

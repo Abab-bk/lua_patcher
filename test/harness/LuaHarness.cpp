@@ -143,6 +143,7 @@ int main()
 	auto* bow = AddForm<RE::TESObjectWEAP>(0x03001002, RE::FormType::Weapon, "GearBow", "Gear Bow", gearMod);
 	bow->weaponData.skill = RE::ActorValue::kArchery;
 	bow->weaponData.animationType = RE::kBow;
+	bow->attackDamage = 12;
 
 	auto* chest = AddForm<RE::TESObjectARMO>(0x03002000, RE::FormType::Armor, "GearChest", "Gear Cuirass", gearMod);
 	chest->armorRating = 2500;  // 25.0
@@ -164,11 +165,21 @@ int main()
 
 	auto*           gearKw = AddForm<RE::BGSKeyword>(0x03004000, RE::FormType::Keyword, "GearKeyword", "GearKeyword", gearMod);
 	auto*           gearKw2 = AddForm<RE::BGSKeyword>(0x03004001, RE::FormType::Keyword, "GearKeyword2", "GearKeyword2", gearMod);
-	RE::BGSKeyword* gearKwArray[] = { gearKw, gearKw2 };
+	// heap-allocated: the mock AddKeyword/RemoveKeyword delete[] this array,
+	// mirroring the real engine's ownership semantics
+	auto* gearKwArray = new RE::BGSKeyword*[2]{ gearKw, gearKw2 };
 	chest->keywords = gearKwArray;
 	chest->numKeywords = 2;
 
-	// loot lists targeted by the EquipmentInjection example (editorId prefix match
+	// material keywords the KeywordFixer example derives from item stats
+	// (sword dmg 25 -> Daedric, bow dmg 12 -> Dwarven, chest 25 heavy -> Orcish,
+	//  helmet 10 light -> Elven)
+	auto* kwWeapDaedric = AddForm<RE::BGSKeyword>(0x03004002, RE::FormType::Keyword, "WeapMaterialDaedric", "WeapMaterialDaedric", gearMod);
+	auto* kwWeapDwarven = AddForm<RE::BGSKeyword>(0x03004003, RE::FormType::Keyword, "WeapMaterialDwarven", "WeapMaterialDwarven", gearMod);
+	auto* kwArmorOrcish = AddForm<RE::BGSKeyword>(0x03004004, RE::FormType::Keyword, "ArmorMaterialOrcish", "ArmorMaterialOrcish", gearMod);
+	auto* kwArmorElven  = AddForm<RE::BGSKeyword>(0x03004005, RE::FormType::Keyword, "ArmorMaterialElven", "ArmorMaterialElven", gearMod);
+
+	// loot lists targeted by the GearInjection example (editorId prefix match
 	// against the example's default targetPrefixes = { "LItem" })
 	std::vector<RE::TESLevItem*> lootLists;
 	for (const char* editorId : { "LItemPlayerLootLight", "LItemPlayerLootHeavy",
@@ -556,12 +567,12 @@ llChar:clear()
 		Check(llMain->numEntries == 2, "example: restored main list also got the bulk add");
 	}
 
-	// --- run the shipped EquipmentInjection.lua example ------------------
+	// --- run the shipped GearInjection.lua example (generic, config-driven) ---
 	{
 		std::string example;
 		{
-			FILE* f = std::fopen("examples/EquipmentInjection/EquipmentInjection.lua", "rb");
-			Check(f != nullptr, "equipment example readable");
+			FILE* f = std::fopen("examples/GearInjection/GearInjection.lua", "rb");
+			Check(f != nullptr, "gearinjection example readable");
 			char   buf[4096];
 			size_t n;
 			while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) {
@@ -571,7 +582,7 @@ llChar:clear()
 		}
 		DoString(lua, example.c_str());
 
-		// Expectations:
+		// Same candidate set as the former EquipmentInjection by default (plugin = ""):
 		//   injected: helmet (light), chest (heavy), bow (ranged)
 		//   excluded: sword (enchanted), sword2 (non-playable),
 		//             vanillaChest (vanilla plugin), assignedArmor (already in a list)
@@ -594,8 +605,8 @@ llChar:clear()
 				if (e.form == assignedArmor)
 					hasAssigned = true;
 			}
-			Check(hasHelmet && hasChest && hasBow, "equipment example: gear injected into each loot list");
-			Check(!hasSword && !hasSword2 && !hasVanilla, "equipment example: excluded gear stays out");
+			Check(hasHelmet && hasChest && hasBow, "gearinjection: gear injected into each loot list");
+			Check(!hasSword && !hasSword2 && !hasVanilla, "gearinjection: excluded gear stays out");
 		}
 		// assignedArmor must remain in exactly one list
 		std::size_t assignedCount = 0;
@@ -606,7 +617,43 @@ llChar:clear()
 				}
 			}
 		}
-		Check(assignedCount == 1, "equipment example: already-assigned gear untouched");
+		Check(assignedCount == 1, "gearinjection: already-assigned gear untouched");
+		// target lists are "LItem"-prefixed only: llMain is untouched
+		Check(llMain->numEntries == 2, "gearinjection: non-LItem lists untouched");
+	}
+
+	// --- run the shipped KeywordFixer.lua example -------------------------
+	{
+		std::string example;
+		{
+			FILE* f = std::fopen("examples/KeywordFixer/KeywordFixer.lua", "rb");
+			Check(f != nullptr, "keywordfixer example readable");
+			char   buf[4096];
+			size_t n;
+			while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) {
+				example.append(buf, n);
+			}
+			std::fclose(f);
+		}
+		DoString(lua, example.c_str());
+
+		auto hasKeyword = [](RE::TESForm* a_form, RE::BGSKeyword* a_kw) {
+			auto* kwForm = a_form->As<RE::BGSKeywordForm>();
+			return kwForm && kwForm->HasKeyword(a_kw);
+		};
+
+		// material keywords derived from stats:
+		//   sword dmg 25 -> Daedric, bow dmg 12 -> Dwarven
+		//   chest rating 25 (heavy) -> Orcish, helmet rating 10 (light) -> Elven
+		Check(hasKeyword(sword, kwWeapDaedric), "keywordfixer: sword got Daedric material keyword");
+		Check(hasKeyword(bow, kwWeapDwarven), "keywordfixer: bow got Dwarven material keyword");
+		Check(hasKeyword(chest, kwArmorOrcish), "keywordfixer: chest got Orcish material keyword");
+		Check(hasKeyword(helmet, kwArmorElven), "keywordfixer: helmet got Elven material keyword");
+
+		// vanilla / non-playable gear untouched, existing keywords preserved
+		Check(!hasKeyword(sword2, kwWeapDaedric), "keywordfixer: non-playable gear untouched");
+		Check(!hasKeyword(vanillaChest, kwArmorOrcish), "keywordfixer: vanilla gear untouched");
+		Check(hasKeyword(chest, gearKw) && hasKeyword(chest, gearKw2), "keywordfixer: existing keywords preserved");
 	}
 
 	std::printf("All harness checks passed.\n");

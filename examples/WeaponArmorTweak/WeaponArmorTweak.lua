@@ -42,7 +42,7 @@ do
     end
 end
 
--- Material tier tables (same thresholds as EquipmentInjection, derived from UESP)
+-- Material tier tables (same thresholds as GearInjection, derived from UESP)
 local WEAPON_TIERS = {
     { mat = "Iron",    lvl = 1,  maxDmg = 8 }, -- Iron Sword 7, Mace 9-ish
     { mat = "Steel",   lvl = 2,  maxDmg = 9 },

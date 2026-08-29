@@ -29,9 +29,10 @@ the same archive).
 ## Usage
 
 **Interactive** (recommended for end users): run `protectgen.exe` with no
-arguments — it prompts for the Skyrim folder (game root or `Data/`), an
-optional `plugins.txt` for a modded load order, and the output file. Pressing
-Enter through the prompts produces the vanilla + Creation Club dataset.
+arguments — on Windows a native folder picker opens for the Skyrim folder, then
+one for `plugins.txt` and the MO2 mods folder (cancelling falls back to typing
+the path; pressing Enter through the prompts produces the vanilla + Creation
+Club dataset).
 
 **Headless**:
 
@@ -53,7 +54,7 @@ protectgen <SkyrimDataOrGameFolder> [--ccc <Skyrim.ccc>]
 - `--json` — additionally dump the raw dataset for debugging
 
 The Lua file is loaded at runtime by EverythingRandomizer.lua via
-`lua_patcher.tryLoadConfig("EverythingRandomizer_protection")` and returns
+`lua_patcher.loadLua("EverythingRandomizer_protection.lua")` and returns
 `{ protected = { [formId] = true, ... }, info = { [formId] = editorId, ... } }`.
 
 ### What the dataset contains

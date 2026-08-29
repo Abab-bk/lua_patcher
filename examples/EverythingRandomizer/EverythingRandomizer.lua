@@ -18,6 +18,11 @@
 --   * lights get radius/color/fade jitter; NPCs can get level/attribute
 --     jitter + skill shuffles (both off by default)
 --
+-- DIFFICULTY (tierBands / tierDrift): pools are paired with slots by power
+-- rank within a window, so early-game loot stays early-game. Enchanted-variant
+-- forms above enchantedLootRatio stay in their original lists instead of
+-- entering the loot pools.
+--
 -- The layout is fully determined by CONFIG.seed (any integer).
 --
 -- Note:
@@ -58,6 +63,15 @@ local CONFIG = {
     excludeSuffixes = {},                -- e.g. { "Unique" }
     formListExcludeSuffixes = { "Set" }, -- keep smithing material sets sane
 
+    -- Difficulty: shuffled slots are paired with forms of a similar power rank
+    -- (weapon damage / armor rating). tierBands splits the power-ordered pool;
+    -- tierDrift widens the pairing window (0 = strict bands, 1 = full chaos).
+    -- enchantedLootRatio caps the Ench* variants that join the loot pools
+    -- (1.0 = vanilla pool, 0 = enchanted loot stays where vanilla put it).
+    tierBands = 4,
+    tierDrift = 0.3,
+    enchantedLootRatio = 1.0,
+
     -- Shuffles
     shuffleLeveledItems = true,
     shuffleLeveledCharacters = false, -- NPC spawn lists (quest-hostile)
@@ -86,12 +100,12 @@ local CONFIG = {
 
 do
     local loaded = nil
-    if lua_patcher.tryLoadConfig then
-        local ok, result = pcall(lua_patcher.tryLoadConfig, "EverythingRandomizer")
+    if lua_patcher.loadLua then
+        local ok, result = pcall(lua_patcher.loadLua, "EverythingRandomizer_config.lua")
         if ok and type(result) == "table" then
             loaded = result
         elseif not ok then
-            print(string.format("EverythingRandomizer: tryLoadConfig failed: %s", tostring(result)))
+            print(string.format("EverythingRandomizer: loadLua failed: %s", tostring(result)))
         end
     end
     if loaded then
@@ -130,19 +144,27 @@ do
     end
     if type(CONFIG.zoneSwapWindow) ~= "number" or CONFIG.zoneSwapWindow < 1 then CONFIG.zoneSwapWindow = 3 end
     if CONFIG.zoneSwapWindow > 10 then CONFIG.zoneSwapWindow = 10 end
+    if type(CONFIG.tierBands) ~= "number" or CONFIG.tierBands < 1 then CONFIG.tierBands = 4 end
+    if CONFIG.tierBands > 10 then CONFIG.tierBands = 10 end
+    if type(CONFIG.tierDrift) ~= "number" or CONFIG.tierDrift < 0 then CONFIG.tierDrift = 0.3 end
+    if CONFIG.tierDrift > 1 then CONFIG.tierDrift = 1 end
+    if type(CONFIG.enchantedLootRatio) ~= "number" or CONFIG.enchantedLootRatio < 0 then
+        CONFIG.enchantedLootRatio = 1.0
+    end
+    if CONFIG.enchantedLootRatio > 1 then CONFIG.enchantedLootRatio = 1 end
 end
 
 -- ---- quest protection ----
 --
 -- Two layers:
---   1. EverythingRandomizer_protection.lua (generated from the vanilla + CC
---      masters): quest alias refs and DOBJ forms.
+--   1. EverythingRandomizer_protection.lua (a sibling generated from the
+--      vanilla + CC masters; loaded via loadLua).
 --   2. lua_patcher.isQuestReferenced(): every loaded quest's alias refs
 --      (mod quests included), computed by the plugin at load time.
 local PROTECTED = {}
 do
-    if CONFIG.useProtection and lua_patcher.tryLoadConfig then
-        local ok, result = pcall(lua_patcher.tryLoadConfig, "EverythingRandomizer_protection")
+    if CONFIG.useProtection and lua_patcher.loadLua then
+        local ok, result = pcall(lua_patcher.loadLua, "EverythingRandomizer_protection.lua")
         if ok and type(result) == "table" and type(result.protected) == "table" then
             PROTECTED = result.protected
             local n = 0
@@ -151,7 +173,7 @@ do
         elseif ok then
             print("EverythingRandomizer: protection dataset missing or malformed, using runtime quest refs only")
         else
-            print(string.format("EverythingRandomizer: tryLoadConfig failed: %s", tostring(result)))
+            print(string.format("EverythingRandomizer: loadLua failed: %s", tostring(result)))
         end
     end
     local hasRuntime = CONFIG.useProtection and lua_patcher.isQuestReferenced ~= nil
@@ -227,19 +249,67 @@ local function fisherYates(t)
     return t
 end
 
+-- Power score of a form for difficulty banding: weapon damage / armor rating /
+-- spell cost override. Forms without a natural power (keys, ingredients, ...)
+-- score nil and sort to the bottom.
+local function formPower(form)
+    local t = form.type
+    if t == "Weapon" then return form.damage or 0 end
+    if t == "Armor" then return form.armorRating or 0 end
+    if t == "Spell" then return form.costOverride or 0 end
+    return nil
+end
+
+-- Enchanted-variant forms (editor IDs like EnchIronDaggerFrost01) carry their
+-- enchantment in the form itself; vanilla gates them behind level, the
+-- randomizer's flat pools would spread them everywhere.
+local function isEnchantedVariant(form)
+    return string.sub(form.editorId or "", 1, 4) == "Ench"
+end
+
+-- Difficulty banding: pairs n slots with n forms of equal power rank, then
+-- perturbs the pairing within a window. window = one band at tierDrift 0
+-- (strict bands, difficulty curve kept) and the whole pool at tierDrift 1
+-- (full chaos). tierBands slices the power-ordered pool.
+local function bandedPairing(n)
+    local bandSize = math.max(1, math.ceil(n / CONFIG.tierBands))
+    local window = math.max(bandSize, math.floor(n * CONFIG.tierDrift))
+    local assign = {}
+    for i = 1, n do
+        assign[i] = i
+    end
+    for i = 1, n do
+        local lo = math.max(1, i - window)
+        local hi = math.min(n, i + window)
+        local j = math.random(lo, hi)
+        assign[i], assign[j] = assign[j], assign[i]
+    end
+    return assign
+end
+
 -- Swaps the forms of the same type pool across the given lists. Each slot
 -- keeps its own count/level; only the form changes. Conservation: every slot
 -- receives a form because the pool is exactly the multiset of forms of its
 -- type. Protected forms (quest refs) are excluded from pools and their slots
 -- keep the original form, so quest lists never receive shuffled gear.
+--
+-- Difficulty: slots are paired with forms of a similar power rank within a
+-- window (bandedPairing), so early-game lists keep early-game loot. Enchanted
+-- variants beyond CONFIG.enchantedLootRatio never enter the pools; they stay
+-- in their original lists (vanilla placement, tier-aligned by construction).
 local function shuffleLeveledEntries(lists)
-    local pools = {}
+    local slotsByType = {}
+    local poolByType = {}
     for _, list in ipairs(lists) do
-        for _, entry in ipairs(list:entries()) do
-            if entry.form and not isExcluded(entry.form) then
-                local t = entry.form.type
-                pools[t] = pools[t] or {}
-                table.insert(pools[t], entry.form)
+        local entries = list:entries()
+        for idx, entry in ipairs(entries) do
+            local f = entry.form
+            if f and not isExcluded(f) then
+                local t = f.type
+                slotsByType[t] = slotsByType[t] or {}
+                table.insert(slotsByType[t], { list = list, idx = idx, form = f, level = entry.level, count = entry.count })
+                poolByType[t] = poolByType[t] or {}
+                table.insert(poolByType[t], { form = f })
             end
         end
     end
@@ -247,49 +317,93 @@ local function shuffleLeveledEntries(lists)
     -- random hash seed); sort the pool keys so the same seed always consumes
     -- the RNG in the same order -> the same world on every launch.
     local poolKeys = {}
-    for t in pairs(pools) do
+    for t in pairs(poolByType) do
         table.insert(poolKeys, t)
     end
     table.sort(poolKeys)
+
+    local changed = 0
+    local plan = {} -- list -> idx -> { form, level, count }
     for _, t in ipairs(poolKeys) do
-        fisherYates(pools[t])
+        local slots = slotsByType[t]
+        local pool = poolByType[t]
+
+        -- power-sort both sides (pool[i] corresponds to slots[i] by construction)
+        table.sort(slots, function(a, b)
+            return (formPower(a.form) or -1) < (formPower(b.form) or -1)
+        end)
+        table.sort(pool, function(a, b)
+            return (formPower(a.form) or -1) < (formPower(b.form) or -1)
+        end)
+
+        -- enchantedLootRatio: cap Ench* variants in weapon/armor loot pools.
+        -- The capped-out variants keep their original slots (never pooled).
+        if CONFIG.enchantedLootRatio < 1.0 and (t == "Weapon" or t == "Armor") then
+            local ench = {}
+            for i, e in ipairs(pool) do
+                if isEnchantedVariant(e.form) then
+                    table.insert(ench, i)
+                end
+            end
+            local keep = math.min(#ench, math.ceil(#ench * CONFIG.enchantedLootRatio))
+            local removed = {}
+            for k = 1, #ench - keep do
+                removed[ench[k]] = true
+            end
+            if #removed > 0 then
+                local keepSlots, keepPool = {}, {}
+                for i = 1, #pool do
+                    if not removed[i] then
+                        table.insert(keepSlots, slots[i])
+                        table.insert(keepPool, pool[i])
+                    end
+                end
+                slots, pool = keepSlots, keepPool
+            end
+        end
+
+        local assign = bandedPairing(#slots)
+        for i, slot in ipairs(slots) do
+            local form = pool[assign[i]].form
+            if form.formId ~= slot.form.formId then
+                changed = changed + 1
+            end
+            plan[slot.list] = plan[slot.list] or {}
+            plan[slot.list][slot.idx] = { form = form, level = slot.level, count = slot.count }
+        end
     end
 
-    local cursor = {}
-    local changed = 0
     for _, list in ipairs(lists) do
         local entries = list:entries()
         list:clear()
-        for _, entry in ipairs(entries) do
-            if isExcluded(entry.form) then
-                -- quest slot: keep the original form and do NOT consume the
-                -- pool (the pool holds exactly one form per unprotected slot)
+        for idx, entry in ipairs(entries) do
+            local p = plan[list] and plan[list][idx]
+            if p then
+                list:add(p.form, p.level, p.count)
+            else
+                -- quest-protected slot: keep the original form, do NOT consume
+                -- the pool (the pool holds exactly one form per open slot)
                 skippedProtected = skippedProtected + 1
                 list:add(entry.form, entry.level, entry.count)
-            else
-                local t = entry.form.type
-                local pool = pools[t]
-                local idx = (cursor[t] or 0) + 1
-                cursor[t] = idx
-                local form = pool and pool[idx] or entry.form
-                -- userdata identity comparison is unreliable; forms are unique per formId
-                if form.formId ~= entry.form.formId then changed = changed + 1 end
-                list:add(form, entry.level, entry.count)
             end
         end
     end
     return changed
 end
 
--- Same swap for FormList contents (no counts/levels there).
+-- Same swap for FormList contents (no counts/levels there), banded the same
+-- way so power-ordered lists keep their rough progression.
 local function shuffleFormLists(lists)
-    local pools = {}
+    local slotsByType = {}
+    local poolByType = {}
     for _, fl in ipairs(lists) do
-        for _, form in ipairs(fl:forms()) do
+        for idx, form in ipairs(fl:forms()) do
             if form and not isExcluded(form) then
                 local t = form.type
-                pools[t] = pools[t] or {}
-                table.insert(pools[t], form)
+                slotsByType[t] = slotsByType[t] or {}
+                table.insert(slotsByType[t], { list = fl, idx = idx, form = form })
+                poolByType[t] = poolByType[t] or {}
+                table.insert(poolByType[t], { form = form })
             end
         end
     end
@@ -297,31 +411,44 @@ local function shuffleFormLists(lists)
     -- random hash seed); sort the pool keys so the same seed always consumes
     -- the RNG in the same order -> the same world on every launch.
     local poolKeys = {}
-    for t in pairs(pools) do
+    for t in pairs(poolByType) do
         table.insert(poolKeys, t)
     end
     table.sort(poolKeys)
+
+    local changed = 0
+    local plan = {} -- list -> idx -> form
     for _, t in ipairs(poolKeys) do
-        fisherYates(pools[t])
+        local slots = slotsByType[t]
+        local pool = poolByType[t]
+        table.sort(slots, function(a, b)
+            return (formPower(a.form) or -1) < (formPower(b.form) or -1)
+        end)
+        table.sort(pool, function(a, b)
+            return (formPower(a.form) or -1) < (formPower(b.form) or -1)
+        end)
+
+        local assign = bandedPairing(#slots)
+        for i, slot in ipairs(slots) do
+            local form = pool[assign[i]].form
+            if form.formId ~= slot.form.formId then
+                changed = changed + 1
+            end
+            plan[slot.list] = plan[slot.list] or {}
+            plan[slot.list][slot.idx] = form
+        end
     end
 
-    local cursor = {}
-    local changed = 0
     for _, fl in ipairs(lists) do
         local forms = fl:forms()
         fl:clear()
-        for _, form in ipairs(forms) do
-            if isExcluded(form) then
+        for idx, form in ipairs(forms) do
+            local slot = plan[fl] and plan[fl][idx]
+            if slot then
+                fl:add(slot)
+            else
                 skippedProtected = skippedProtected + 1
                 fl:add(form)
-            else
-                local t = form.type
-                local pool = pools[t]
-                local idx = (cursor[t] or 0) + 1
-                cursor[t] = idx
-                local slot = pool and pool[idx] or form
-                if slot.formId ~= form.formId then changed = changed + 1 end
-                fl:add(slot)
             end
         end
     end
@@ -703,6 +830,10 @@ end
 -- enchantments (weapon-type) only on weapons; unenchanted gear stays
 -- unenchanted. Gear that is quest-protected or carries a protected
 -- enchantment is left untouched.
+--
+-- Difficulty: gear slots and enchantments are paired by power rank within a
+-- window (bandedPairing), so a steel sword trades enchantments with its
+-- power peers — an iron dagger no longer ends up with Absorb Health 25.
 local function shuffleGearEnchantments()
     local pools = { cast = {}, constant = {} }
     local slots = { cast = {}, constant = {} }
@@ -711,29 +842,44 @@ local function shuffleGearEnchantments()
         return e.castingType == "ConstantEffect" and "constant" or "cast"
     end
 
+    -- Total effect magnitude as the enchantment's power score.
+    local function enchantPower(e)
+        local total = 0
+        for _, ef in ipairs(e:effects()) do
+            total = total + (ef.magnitude or 0)
+        end
+        return total
+    end
+
     for _, w in ipairs(lua_patcher.allWeapons()) do
         local e = w.enchantment
         if e and not isExcluded(w) and not isExcluded(e) then
             local key = poolFor(e)
-            table.insert(pools[key], e)
-            table.insert(slots[key], w)
+            table.insert(pools[key], { form = e, power = enchantPower(e) })
+            table.insert(slots[key], { form = w, power = formPower(w) or 0 })
         end
     end
     for _, a in ipairs(lua_patcher.allArmors()) do
         local e = a.enchantment
         if e and not isExcluded(a) and not isExcluded(e) then
             local key = poolFor(e)
-            table.insert(pools[key], e)
-            table.insert(slots[key], a)
+            table.insert(pools[key], { form = e, power = enchantPower(e) })
+            table.insert(slots[key], { form = a, power = formPower(a) or 0 })
         end
     end
 
     local changed = 0
     for _, key in ipairs({ "cast", "constant" }) do
-        fisherYates(pools[key])
-        for i, item in ipairs(slots[key]) do
-            if pools[key][i].formId ~= item.enchantment.formId then
-                item.enchantment = pools[key][i]
+        local pool = pools[key]
+        local gear = slots[key]
+        table.sort(gear, function(a, b) return a.power < b.power end)
+        table.sort(pool, function(a, b) return a.power < b.power end)
+
+        local assign = bandedPairing(#gear)
+        for i, slot in ipairs(gear) do
+            local ench = pool[assign[i]].form
+            if ench.formId ~= slot.form.enchantment.formId then
+                slot.form.enchantment = ench
                 changed = changed + 1
             end
         end

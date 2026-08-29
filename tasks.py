@@ -28,6 +28,8 @@ Usage:
     invoke package-tools                     package protectgen (third_party) as companion zip
     invoke package-tools --version X.Y.Z     override version
 
+    invoke build-protectgen                  build protectgen for the current platform (single file)
+
     invoke gen-protection                    regenerate EverythingRandomizer_protection.lua from the
                                              vanilla + Creation Club plugin files (--data-dir from
                                              $SKYRIM_FOLDER, optional --plugins/--mods-dir for modded)
@@ -475,6 +477,37 @@ def package_example(
 
 
 @task
+def build_protectgen(c: Context, out: str = ""):
+    """Build the protectgen CLI for the current platform.
+
+    Runs `dotnet publish` (framework-dependent, single-file) so the result is
+    one executable that only needs a matching .NET runtime — no SDK needed at
+    run time. Use `invoke package-tools` for the distributed win-x64 build.
+
+    --out  output directory (default: build/protectgen; the binary is
+           `protectgen` on Linux/macOS, `protectgen.exe` on Windows)
+    """
+    _ensure_root()
+    if not shutil.which("dotnet"):
+        raise Exit("dotnet is not installed (required for protectgen)")
+
+    out_dir = Path(out) if out else ROOT / "build" / "protectgen"
+    if not out_dir.is_absolute():
+        out_dir = ROOT / out_dir
+
+    pg = ROOT / "third_party" / "protectgen"
+    c.run(
+        f"dotnet publish {pg} -c Release -p:PublishSingleFile=true -p:SelfContained=false -o {out_dir}",
+        echo=True,
+    )
+
+    exe = out_dir / ("protectgen.exe" if os.name == "nt" else "protectgen")
+    if not exe.is_file():
+        raise Exit(f"publish failed: {exe} not found")
+    print(f"\nBuilt {exe}")
+
+
+@task
 def gen_protection(c: Context, data_dir: str = "", plugins: str = "", mods_dir: str = "", out: str = ""):
     """Regenerate EverythingRandomizer_protection.lua from the plugin files.
 
@@ -529,7 +562,7 @@ def package_tools(c: Context, version: str = "", out: str = ""):
     EverythingRandomizer standalone mod.
 
     --version X.Y.Z  override version (default: git tag or CMakeLists.txt)
-    --out DIR        output dir or file (default: dist/EverythingRandomizer-tools-<ver>.zip)
+    --out DIR        output dir or file (default: dist/protectgen-<ver>.zip)
     """
     _ensure_root()
 
@@ -551,9 +584,9 @@ def package_tools(c: Context, version: str = "", out: str = ""):
             zip_name.parent.mkdir(parents=True, exist_ok=True)
         else:
             out_path.mkdir(parents=True, exist_ok=True)
-            zip_name = out_path / f"EverythingRandomizer-tools-{ver}.zip"
+            zip_name = out_path / f"protectgen-{ver}.zip"
     else:
-        zip_name = ROOT / "dist" / f"EverythingRandomizer-tools-{ver}.zip"
+        zip_name = ROOT / "dist" / f"protectgen-{ver}.zip"
         zip_name.parent.mkdir(parents=True, exist_ok=True)
 
     tmp = Path(tempfile.mkdtemp())

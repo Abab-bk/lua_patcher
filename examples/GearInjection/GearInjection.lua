@@ -81,12 +81,12 @@ local CONFIG = {
 
 do
     local loaded = nil
-    if lua_patcher.tryLoadConfig then
-        local ok, result = pcall(lua_patcher.tryLoadConfig, "GearInjection")
+    if lua_patcher.loadLua then
+        local ok, result = pcall(lua_patcher.loadLua, "GearInjection_config.lua")
         if ok and type(result) == "table" then
             loaded = result
         elseif not ok then
-            print(string.format("GearInjection: tryLoadConfig failed: %s", tostring(result)))
+            print(string.format("GearInjection: loadLua failed: %s", tostring(result)))
         end
     end
     if loaded then

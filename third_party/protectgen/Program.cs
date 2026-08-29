@@ -21,9 +21,10 @@
 // formInfo) for debugging.
 //
 // Record types are reported by their Mutagen getter-interface names.
-// License: GPL-3.0 (links Mutagen.Bethesda, also GPL-3.0).
+// License: GPL-3.0.
 
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using Mutagen.Bethesda;
 using Mutagen.Bethesda.Plugins;
@@ -51,28 +52,94 @@ for (var i = 1; i < args.Length; i++)
 // ---- interactive mode ----
 if (dataDir.Length == 0)
 {
-    Console.WriteLine("protectgen — EverythingRandomizer protection dataset generator");
-    Console.WriteLine("GNU GPL-3.0. Reads Skyrim plugin files and writes the");
-    Console.WriteLine("EverythingRandomizer_protection.lua dataset for the");
-    Console.WriteLine("EverythingRandomizer randomizer.");
+    Console.WriteLine("protectgen: EverythingRandomizer protection dataset generator");
     Console.WriteLine();
-    Console.Write("Skyrim folder (game root or Data dir): ");
-    var input = Console.ReadLine()?.Trim().Trim('"') ?? "";
-    if (input.Length == 0)
-    {
-        Console.WriteLine("No input, exiting.");
-        return 1;
-    }
-    dataDir = input;
 
-    Console.Write("plugins.txt path (Enter for vanilla + Creation Club only): ");
-    pluginsPath = (Console.ReadLine()?.Trim().Trim('"') ?? "").Trim();
+    // Native folder/file picker on Windows; cancel or a non-Windows run
+    // falls back to typing the path.
+    var picked = PickPath("Select the Skyrim folder (game root or Data dir)", includeFiles: false);
+    if (picked != null)
+    {
+        dataDir = picked;
+    }
+    else
+    {
+        Console.Write("Skyrim folder (game root or Data dir): ");
+        var input = Console.ReadLine()?.Trim().Trim('"') ?? "";
+        if (input.Length == 0)
+        {
+            Console.WriteLine("No input, exiting.");
+            return 1;
+        }
+        dataDir = input;
+    }
+
+    var pickedPlugin = PickPath("Select plugins.txt (cancel for vanilla + Creation Club only)", includeFiles: true);
+    if (pickedPlugin != null)
+    {
+        pluginsPath = pickedPlugin;
+    }
+    else
+    {
+        Console.Write("plugins.txt path (Enter for vanilla + Creation Club only): ");
+        pluginsPath = (Console.ReadLine()?.Trim().Trim('"') ?? "").Trim();
+    }
     if (pluginsPath.Length > 0)
     {
-        Console.Write("MO2 mods folder (Enter to skip, plugins must be in Data): ");
-        modsDir = (Console.ReadLine()?.Trim().Trim('"') ?? "").Trim();
+        var pickedMods = PickPath("Select the MO2 mods staging folder (cancel to skip)", includeFiles: false);
+        if (pickedMods != null)
+        {
+            modsDir = pickedMods;
+        }
+        else
+        {
+            Console.Write("MO2 mods folder (Enter to skip, plugins must be in Data): ");
+            modsDir = (Console.ReadLine()?.Trim().Trim('"') ?? "").Trim();
+        }
     }
     Console.WriteLine();
+}
+
+// Native Windows shell picker (SHBrowseForFolder); null when unavailable,
+// cancelled, or the path cannot be resolved. The dialog also lets the user
+// pick files (plugins.txt) when includeFiles is set.
+static string? PickPath(string title, bool includeFiles)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        return null;
+    }
+    try
+    {
+        var info = new NativeDialogs.BROWSEINFO
+        {
+            lpszTitle = title,
+            ulFlags = NativeDialogs.BIF_NEWDIALOGSTYLE |
+                (includeFiles ? NativeDialogs.BIF_BROWSEINCLUDEFILES : NativeDialogs.BIF_RETURNONLYFSDIRS),
+        };
+        var pidl = NativeDialogs.SHBrowseForFolder(ref info);
+        if (pidl == IntPtr.Zero)
+        {
+            return null;  // cancelled
+        }
+        try
+        {
+            var path = new StringBuilder(1024);
+            if (!NativeDialogs.SHGetPathFromIDList(pidl, path))
+            {
+                return null;
+            }
+            return path.Length > 0 ? path.ToString() : null;
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(pidl);
+        }
+    }
+    catch (Exception)
+    {
+        return null;  // shell32 missing (non-Windows) or dialog failure
+    }
 }
 
 // ---- paths ----
@@ -129,7 +196,11 @@ var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var lightIndexCounter = 0;
 var vanillaIndexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
 {
-    ["Skyrim.esm"] = 0, ["Update.esm"] = 1, ["Dawnguard.esm"] = 2, ["HearthFires.esm"] = 3, ["Dragonborn.esm"] = 4,
+    ["Skyrim.esm"] = 0,
+    ["Update.esm"] = 1,
+    ["Dawnguard.esm"] = 2,
+    ["HearthFires.esm"] = 3,
+    ["Dragonborn.esm"] = 4,
 };
 foreach (var name in vanillaIndexes.Keys)
 {
@@ -209,13 +280,13 @@ static bool SkipValue(byte[] b, ref int p, byte ty)
             p += 4;
             return true;
         case 2:
-        {
-            if (p + 2 > b.Length) return false;
-            var len = RdU16(b, ref p);
-            if (p + len > b.Length) return false;
-            p += len;
-            return true;
-        }
+            {
+                if (p + 2 > b.Length) return false;
+                var len = RdU16(b, ref p);
+                if (p + len > b.Length) return false;
+                p += len;
+                return true;
+            }
         case 3:
         case 4:
             if (p + 4 > b.Length) return false;
@@ -229,58 +300,58 @@ static bool SkipValue(byte[] b, ref int p, byte ty)
         case 8:
         case 9:
         case 10:
-        {
-            if (p + 4 > b.Length) return false;
-            var count = (int)RdU32(b, ref p);
-            var elem = ty == 6 || ty == 8 || ty == 9 ? 4u : 1u;
-            if (p + count * elem > b.Length) return false;
-            p += count * (int)elem;
-            return true;
-        }
+            {
+                if (p + 4 > b.Length) return false;
+                var count = (int)RdU32(b, ref p);
+                var elem = ty == 6 || ty == 8 || ty == 9 ? 4u : 1u;
+                if (p + count * elem > b.Length) return false;
+                p += count * (int)elem;
+                return true;
+            }
         case 7:
-        {
-            if (p + 4 > b.Length) return false;
-            var count = (int)RdU32(b, ref p);
-            for (var i = 0; i < count; i++)
             {
-                if (p + 2 > b.Length) return false;
-                var len = RdU16(b, ref p);
-                if (p + len > b.Length) return false;
-                p += len;
+                if (p + 4 > b.Length) return false;
+                var count = (int)RdU32(b, ref p);
+                for (var i = 0; i < count; i++)
+                {
+                    if (p + 2 > b.Length) return false;
+                    var len = RdU16(b, ref p);
+                    if (p + len > b.Length) return false;
+                    p += len;
+                }
+                return true;
             }
-            return true;
-        }
         case 11:
-        {
-            if (p + 2 > b.Length) return false;
-            var vars = RdU16(b, ref p);
-            for (var i = 0; i < vars; i++)
-            {
-                if (p + 2 > b.Length) return false;
-                var t = b[p++];
-                p++; // flags
-                if (!SkipValue(b, ref p, t)) return false;
-            }
-            return true;
-        }
-        case 12:
-        {
-            if (p + 4 > b.Length) return false;
-            var count = (int)RdU32(b, ref p);
-            for (var i = 0; i < count; i++)
             {
                 if (p + 2 > b.Length) return false;
                 var vars = RdU16(b, ref p);
-                for (var j = 0; j < vars; j++)
+                for (var i = 0; i < vars; i++)
                 {
                     if (p + 2 > b.Length) return false;
                     var t = b[p++];
-                    p++;
+                    p++; // flags
                     if (!SkipValue(b, ref p, t)) return false;
                 }
+                return true;
             }
-            return true;
-        }
+        case 12:
+            {
+                if (p + 4 > b.Length) return false;
+                var count = (int)RdU32(b, ref p);
+                for (var i = 0; i < count; i++)
+                {
+                    if (p + 2 > b.Length) return false;
+                    var vars = RdU16(b, ref p);
+                    for (var j = 0; j < vars; j++)
+                    {
+                        if (p + 2 > b.Length) return false;
+                        var t = b[p++];
+                        p++;
+                        if (!SkipValue(b, ref p, t)) return false;
+                    }
+                }
+                return true;
+            }
         default:
             return false;
     }
@@ -566,7 +637,7 @@ static void EmitLua(StringBuilder sb, SortedSet<uint> protectedSet, SortedDictio
     sb.Append("-- Auto-generated by third_party/protectgen. Do not edit.\n");
     sb.Append("-- Protected forms: quest alias references and default-object\n");
     sb.Append("-- (DOBJ) forms from the vanilla + Creation Club masters.\n");
-    sb.Append("-- Loaded via tryLoadConfig.\n");
+    sb.Append("-- Loaded via loadLua.\n");
     sb.Append("return {\n");
     sb.Append("  protected = {\n");
     var ids = protectedSet.ToArray();
@@ -644,3 +715,31 @@ Console.WriteLine($"  dobjRefs: {dobjRefs.Count}");
 Console.WriteLine($"  total protected: {protectedSet.Count}");
 Console.WriteLine($"  domain totals: LVLI entries {lvliEntries} CONT entries {contEntries} FLST entries {flstEntries}");
 return 0;
+
+// ---- native Windows shell dialog (P/Invoke; Windows-only by construction) ----
+internal static class NativeDialogs
+{
+    public const uint BIF_RETURNONLYFSDIRS = 0x0001;
+    public const uint BIF_NEWDIALOGSTYLE = 0x0040;
+    public const uint BIF_BROWSEINCLUDEFILES = 0x4000;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct BROWSEINFO
+    {
+        public IntPtr hwndOwner;
+        public IntPtr pidlRoot;
+        public string? pszDisplayName;
+        public string lpszTitle;
+        public uint ulFlags;
+        public IntPtr lpfn;
+        public IntPtr lParam;
+        public int iImage;
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr SHBrowseForFolder(ref BROWSEINFO lpbi);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SHGetPathFromIDList(IntPtr pidl, StringBuilder pszPath);
+}

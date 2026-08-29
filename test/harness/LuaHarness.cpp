@@ -1057,12 +1057,29 @@ llChar:clear()
 			"ll:add(\"MockFormA\")\n");
 		// config files must never be executed as scripts
 		writeScript("zz_30_config.lua", "lua_patcher.leveledList(\"MockPlugin.esp\", \"00000100\"):add(\"MockFormE\")\n");
+		// exact-file-name load: loadLua("Foo.lua") loads Foo.lua as-is
+		// (generated datasets like EverythingRandomizer_protection.lua)
+		writeScript("ExactConfig.lua", "return { protected = { [123] = true } }\n");
 
 		LuaPatcher::RunScripts();
 
 		Check(llMain->numEntries == 1, "script runner: chain left exactly one entry");
 		Check(llMain->entries[0].form == formD, "script runner: last-priority marker survives");
 		Check(llMain->entries[0].form != formE, "script runner: config file not executed");
+		{
+			sol::protected_function_result res = lua.safe_script(
+				"local t = lua_patcher.loadLua(\"ExactConfig.lua\")\n"
+				"assert(t and t.protected and t.protected[123] == true, \"exact-name load\")\n"
+				"assert(lua_patcher.loadLua(\"ExactConfig\") == nil, \"missing file -> nil\")\n"
+				"assert(lua_patcher.loadLua(\"ExactConfig_config.lua\") == nil, \"wrong name -> nil\")\n",
+				sol::script_pass_on_error);
+			if (!res.valid()) {
+				sol::error err = res;
+				std::fprintf(stderr, "FAIL: %s\n", err.what());
+				std::exit(1);
+			}
+			std::printf("ok: loadLua exact-name\n");
+		}
 
 		fs::remove_all("Data");
 	}
@@ -1075,6 +1092,14 @@ llChar:clear()
 		const fs::path scriptsDir = "Data/SKSE/Plugins/LuaPatcher/Scripts";
 		fs::remove_all("Data");
 		fs::create_directories(scriptsDir);
+
+		// Ench* loot variant used by the enchantedLootRatio scenario (kept out
+		// of the pools entirely at ratio 0). Added late so no earlier section
+		// sees it.
+		auto* enchSword = AddForm<RE::TESObjectWEAP>(
+			0x03001003, RE::FormType::Weapon, "EnchGearSword", "Ench Gear Sword", gearMod);
+		enchSword->attackDamage = 25;
+		enchSword->formEnchanting = enchant;
 
 		// empty leftover lists from earlier examples so the pools are exact
 		for (auto* list : RE::TESDataHandler::MockForms<RE::TESLevItem>()) {
@@ -1122,6 +1147,19 @@ llChar:clear()
 			out << a_content;
 		};
 
+		// the real shipped dataset must load through the exact-name path
+		{
+			FILE* f = std::fopen("examples/EverythingRandomizer/EverythingRandomizer_protection.lua", "rb");
+			Check(f != nullptr, "protection dataset readable");
+			std::ofstream out(scriptsDir / "EverythingRandomizer_protection.lua", std::ios::binary);
+			char buf[8192];
+			size_t n;
+			while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) {
+				out.write(buf, static_cast<std::streamsize>(n));
+			}
+			std::fclose(f);
+		}
+
 		using Slot = std::tuple<RE::TESForm*, std::uint16_t, std::uint16_t>;
 		auto snapshot = [&](std::vector<Slot>& a_out) {
 			a_out.clear();
@@ -1133,38 +1171,40 @@ llChar:clear()
 		};
 		auto makeSlots = [](std::initializer_list<Slot> a_slots) { return std::vector<Slot>(a_slots); };
 
-		// Expected layouts (deterministic given the mock world + seed):
-		//   seed 1337: Keyword pool -> A,B,D,C; armor pool -> chest,helmet; weapon pool -> sword2,sword
+
+		// Expected layouts (deterministic given the mock world + seed). Slots keep
+		// their own count/level; only the form moves. Defaults are banded
+		// (tierBands 4, tierDrift 0.3).
 		const auto kSeed1337 = makeSlots({
 			{ formA, 1, 1 },
-			{ formB, 1, 2 },
-			{ formD, 1, 3 },
+			{ formD, 1, 2 },
+			{ formB, 1, 3 },
 			{ formC, 1, 4 },
-			{ chest, 2, 1 },
-			{ helmet, 1, 2 },
-			{ assignedArmor, 1, 3 },
-			{ sword2, 1, 1 },
-			{ sword, 1, 2 },
+			{ assignedArmor, 2, 1 },
+			{ chest, 1, 2 },
+			{ helmet, 1, 3 },
+			{ sword, 1, 1 },
+			{ sword2, 1, 2 },
 			{ bow, 1, 3 },
 		});
 		//   seed 4242: all three pools shuffle (slots keep their count/level)
 		const auto kSeed4242 = makeSlots({
-			{ formD, 1, 1 },
-			{ formB, 1, 2 },
-			{ formA, 1, 3 },
-			{ formC, 1, 4 },
-			{ helmet, 2, 1 },
+			{ formA, 1, 1 },
+			{ formD, 1, 2 },
+			{ formC, 1, 3 },
+			{ formB, 1, 4 },
+			{ chest, 2, 1 },
 			{ assignedArmor, 1, 2 },
-			{ chest, 1, 3 },
+			{ helmet, 1, 3 },
 			{ sword, 1, 1 },
 			{ bow, 1, 2 },
 			{ sword2, 1, 3 },
 		});
 		//   seed 1337 + excludePrefixes LItem: only llMain shuffles
 		const auto kSeed1337Excluded = makeSlots({
-			{ formB, 1, 1 },
+			{ formC, 1, 1 },
 			{ formA, 1, 2 },
-			{ formC, 1, 3 },
+			{ formB, 1, 3 },
 			{ formD, 1, 4 },
 			{ helmet, 2, 1 },
 			{ chest, 1, 2 },
@@ -1172,6 +1212,35 @@ llChar:clear()
 			{ sword, 1, 1 },
 			{ bow, 1, 2 },
 			{ sword2, 1, 3 },
+		});
+		//   seed 1337 + tierDrift 0 (strict bands; mock pool is small so the
+		//   layout equals the default's — the invariant is the tier alignment)
+		const auto kSeed1337Strict = makeSlots({
+			{ formA, 1, 1 },
+			{ formD, 1, 2 },
+			{ formB, 1, 3 },
+			{ formC, 1, 4 },
+			{ assignedArmor, 2, 1 },
+			{ chest, 1, 2 },
+			{ helmet, 1, 3 },
+			{ sword, 1, 1 },
+			{ sword2, 1, 2 },
+			{ bow, 1, 3 },
+		});
+		//   seed 1337 + enchantedLootRatio 0: the Ench* variant stays in its
+		//   own list (level 4), the base weapons shuffle among the rest
+		const auto kSeed1337NoEnch = makeSlots({
+			{ formA, 1, 1 },
+			{ formD, 1, 2 },
+			{ formB, 1, 3 },
+			{ formC, 1, 4 },
+			{ assignedArmor, 2, 1 },
+			{ chest, 1, 2 },
+			{ helmet, 1, 3 },
+			{ sword2, 1, 1 },
+			{ sword, 1, 2 },
+			{ bow, 1, 3 },
+			{ enchSword, 1, 4 },
 		});
 
 		// run 1: defaults (no config -> seed 1337)
@@ -1204,6 +1273,39 @@ llChar:clear()
 		std::vector<Slot> run4;
 		snapshot(run4);
 		Check(run4 == kSeed1337Excluded, "randomizer: excludePrefixes protect LItem lists");
+
+		// run 5: strict bands (tierDrift 0) keep the difficulty curve: the
+		// weakest weapon slot (level 3, sword2) can only receive the two weakest
+		// weapons and the strongest slot (level 1, sword) the two strongest.
+		writeConfig("return { seed = 1337, tierDrift = 0 }\n");
+		resetWorld();
+		DoString(lua, example.c_str());
+		std::vector<Slot> run5;
+		snapshot(run5);
+		Check(run5 == kSeed1337Strict, "randomizer: strict bands layout");
+		{
+			RE::TESForm* lvl1 = nullptr;  // sword slot: never the weakest form
+			RE::TESForm* lvl3 = nullptr;  // sword2 slot: never the strongest form
+			for (const auto& e : lootLists[1]->entries) {
+				if (e.level == 1)
+					lvl1 = e.form;
+				if (e.level == 3)
+					lvl3 = e.form;
+			}
+			Check(lvl1 != sword2 && lvl3 != sword, "randomizer: strict bands keep tier alignment");
+		}
+
+		// run 6: enchantedLootRatio 0 keeps Ench* variants in their original
+		// lists; the base forms still shuffle.
+		writeConfig("return { seed = 1337, enchantedLootRatio = 0 }\n");
+		resetWorld();
+		lootLists[1]->entries.push_back(MakeEntry(enchSword, 1, 4));
+		lootLists[1]->numEntries = 4;
+		DoString(lua, example.c_str());
+		std::vector<Slot> run6;
+		snapshot(run6);
+		Check(run6 == kSeed1337NoEnch, "randomizer: enchantedLootRatio 0 layout");
+		Check(lootLists[1]->entries[3].form == enchSword, "randomizer: Ench variant stayed in its list");
 
 		fs::remove_all("Data");
 	}

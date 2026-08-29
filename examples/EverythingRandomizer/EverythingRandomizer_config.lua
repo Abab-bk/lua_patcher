@@ -37,6 +37,21 @@ return {
     formListExcludeSuffixes = { "Set" },
 
     -- =====================================================================
+    -- Difficulty — how much of the vanilla power curve survives
+    -- =====================================================================
+    -- Shuffled slots are paired with forms of a similar power rank (weapon
+    -- damage / armor rating) within a window:
+    --   tierBands  slices the power-ordered pool into bands
+    --   tierDrift  widens the pairing window: 0 = strict bands (early game
+    --              stays early), 1 = full chaos (old flat behavior)
+    -- enchantedLootRatio caps the Ench* variants that join the loot pools
+    -- (1.0 = as vanilla, 0 = enchanted loot stays exactly where vanilla put
+    -- it, only base forms shuffle).
+    tierBands = 4,
+    tierDrift = 0.3,
+    enchantedLootRatio = 1.0,
+
+    -- =====================================================================
     -- Shuffles — which domains get randomized
     -- =====================================================================
     -- Leveled lists (drops / chests / vendors / NPC spawns / spell lists)

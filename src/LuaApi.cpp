@@ -116,53 +116,46 @@ namespace
 								  dataHandler->LookupLoadedLightModByName(name) != nullptr);
 	}
 
-	// Whitelisted config loader: primary Data/SKSE/Plugins/LuaPatcher/Scripts/<name>_config.lua
-	// (flat sibling of the script, mirrors examples/<Name>/<Name>.lua + <Name>_config.lua).
-	// Returns the chunk's return value (usually a table) or nil on miss/error.
-	// Security: name must be a plain file name, no path separators or "..".
-	sol::object TryLoadConfig(sol::this_state a_state, const sol::object& a_name)
+	// Whitelisted file loader: loads Data/SKSE/Plugins/LuaPatcher/Scripts/<name>
+// exactly as given ("EverythingRandomizer_protection.lua",
+// "MyMod_config.lua", ...). Returns the chunk's return value (usually a
+// table) or nil on miss/error.
+// Security: name must be a plain file name, no path separators or "..".
+	sol::object LoadLua(sol::this_state a_state, const sol::object& a_name)
 	{
 		sol::state_view lua(a_state);
 
 		if (!a_name.is<std::string>()) {
-			throw sol::error{ "bad argument #1 to 'tryLoadConfig' (config name must be a string)" };
+			throw sol::error{ "bad argument #1 to 'loadLua' (file name must be a string)" };
 		}
 
 		const std::string nameStr = a_name.as<std::string>();
-		const std::string_view name(nameStr);
-		if (name.empty()) {
-			throw sol::error{ "bad argument #1 to 'tryLoadConfig' (config name must be non-empty)" };
+		if (nameStr.empty()) {
+			throw sol::error{ "bad argument #1 to 'loadLua' (file name must be non-empty)" };
 		}
-		if (name.contains("..") || name.contains('/') || name.contains('\\') || name.contains(':')) {
+		if (nameStr.contains("..") || nameStr.contains('/') || nameStr.contains('\\') || nameStr.contains(':')) {
 			throw sol::error{
-				"bad argument #1 to 'tryLoadConfig' (config name must be a plain file name without path separators or "
-				"'..')"
+				"bad argument #1 to 'loadLua' (file name must be a plain file name without path separators or '..')"
 			};
-		}
-
-		std::string baseName(nameStr);
-		if (baseName.size() > 4 && baseName.substr(baseName.size() - 4) == ".lua") {
-			baseName = baseName.substr(0, baseName.size() - 4);
 		}
 
 		namespace fs = std::filesystem;
 		const fs::path scriptDir = "Data/SKSE/Plugins/LuaPatcher/Scripts";
-
-		fs::path file = scriptDir / (baseName + "_config.lua");
+		const fs::path file = scriptDir / nameStr;
 		if (!fs::exists(file)) {
-			logger::info("LuaPatcher: config '{}' not found at '{}', using defaults", baseName, file.generic_string());
+			logger::info("LuaPatcher: '{}' not found in '{}', returning nil", nameStr, scriptDir.generic_string());
 			return sol::nil;
 		}
 
 		std::ifstream in(file, std::ios::binary);
 		if (!in) {
-			logger::warn("LuaPatcher: config '{}' found but could not be opened: {}", baseName, file.generic_string());
+			logger::warn("LuaPatcher: '{}' found but could not be opened: {}", nameStr, file.generic_string());
 			return sol::nil;
 		}
 
 		std::string contents((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 		if (contents.empty()) {
-			logger::warn("LuaPatcher: config '{}' is empty: {}", baseName, file.generic_string());
+			logger::warn("LuaPatcher: '{}' is empty: {}", nameStr, file.generic_string());
 			return sol::nil;
 		}
 
@@ -171,12 +164,12 @@ namespace
 			lua.safe_script(contents, sol::script_pass_on_error, chunkName, sol::load_mode::any);
 		if (!result.valid()) {
 			sol::error err = result;
-			logger::error("LuaPatcher: failed to load config '{}': {}", file.generic_string(), err.what());
+			logger::error("LuaPatcher: failed to load '{}': {}", file.generic_string(), err.what());
 			return sol::nil;
 		}
 
 		// Chunks returning nothing are treated as nil (lua_pcall(0, 1, 0) semantics).
-		logger::info("LuaPatcher: loaded config '{}' from '{}'", baseName, file.generic_string());
+		logger::info("LuaPatcher: loaded '{}'", file.generic_string());
 		if (result.return_count() == 0) {
 			return sol::nil;
 		}
@@ -496,7 +489,7 @@ namespace LuaPatcher
 		patcher["error"] = &Error;
 		patcher["getForm"] = &GetFormById;
 		patcher["isPluginInstalled"] = &IsPluginInstalled;
-		patcher["tryLoadConfig"] = &TryLoadConfig;
+		patcher["loadLua"] = &LoadLua;
 		a_lua["lua_patcher"] = patcher;
 
 		// Route print() through the plugin log

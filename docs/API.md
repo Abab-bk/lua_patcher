@@ -3,23 +3,7 @@
 LuaPatcher patches Skyrim SE/AE game forms at runtime. Scripts live in
 `Data/SKSE/Plugins/LuaPatcher/Scripts/` (recursively scanned, sorted), run once
 at game load. Sibling `*_config.lua` files are **not** executed as scripts; they
-are user configuration loaded on demand via `lua_patcher.tryLoadConfig`.
-
-All API functions are written for Lua: options are passed as tables, filters as
-predicate functions, and flags as named boolean properties — no string-encoded
-conditions.
-
-## Conventions
-
-- **Form references**: a form object, an `"EditorID"` string, a
-  `("Plugin.esm", "000123")` argument pair (plugin name + hex local formID;
-  light plugins use the 0xFFF-masked ID), or a `{ "Plugin.esm", "000123" }`
-  pair table for table fields. No `"Plugin|000123"` string splitting.
-- **Errors**: invalid arguments and failed lookups raise a Lua error (catchable
-  with `pcall`). `lua_patcher.getForm` is the exception: it returns `nil` for a
-  miss instead of raising.
-- **Unknown properties** on form objects raise an error (typo protection);
-  writing to a read-only property raises an error.
+are user configuration loaded on demand via `lua_patcher.loadLua`.
 
 ## `lua_patcher` module
 
@@ -31,7 +15,7 @@ conditions.
 | `error(...)` | — | Like log, at error level |
 | `getForm(formRef)` | Form or nil | Resolves a form reference; never raises |
 | `isPluginInstalled(name)` | bool | Is the plugin in the load order |
-| `tryLoadConfig(name)` | table or nil | Loads sibling `Scripts/<name>_config.lua`; nil if missing/failed; raises on invalid names |
+| `loadLua(name)` | table or nil | Loads an exact file name from `Scripts/` (e.g. `EverythingRandomizer_config.lua`); nil if missing/failed; raises on invalid names |
 | `leveledList(formRef)` | LeveledList | Raises if the form is not a leveled item/character/spell list |
 | `allLeveledItems()` | array of LeveledList | Every `TESLevItem` |
 | `allLeveledCharacters()` | array of LeveledList | Every `TESLevCharacter` |
@@ -370,7 +354,7 @@ ll.chanceNone = 50
 ```
 Data/SKSE/Plugins/LuaPatcher/Scripts/
   MyMod.lua              # executed at load
-  MyMod_config.lua       # NOT executed; loaded via lua_patcher.tryLoadConfig("MyMod")
+  MyMod_config.lua       # NOT executed; loaded via lua_patcher.loadLua("MyMod_config.lua")
 ```
 
 Scripts run in priority order: a `-- priority: N` comment (first 512 bytes of the
@@ -378,13 +362,13 @@ file) sets the execution order, lowest first; scripts without a declaration get
 priority 0 and run first. Equal priorities fall back to path order. EverythingRandomizer
 declares priority 50 so user scripts in the 10-40 range run before it.
 
-Config chunks return a table; `tryLoadConfig` returns it (or nil when the file
+Config chunks return a table; `loadLua` returns it (or nil when the file
 is missing or fails to load). Scripts typically merge it over defaults:
 
 ```lua
 local CONFIG = { enabled = true, maxLevel = 50 }
 
-local loaded = lua_patcher.tryLoadConfig("MyMod")
+local loaded = lua_patcher.loadLua("MyMod_config.lua")
 if loaded then
     for k, v in pairs(loaded) do CONFIG[k] = v end
 end

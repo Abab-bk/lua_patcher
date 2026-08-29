@@ -3,7 +3,7 @@ EverythingRandomizer can randomize many things:
 - Loot tables (leveled items)
 - Enemy spawn lists (leveled characters, off by default)
 - Leveled spell lists
-- FormList contents (vendor stock, groups; smithing material sets stay intact)
+- FormList contents (vendor stock...)
 - Container contents (chests and lootable objects)
 - Ingredient effects
 - Potion / poison / food effects
@@ -40,12 +40,15 @@ from Releases, run the program, and follow the instructions.
 I suggest you set the output path to an empty mod, similar to how BodySlide
 works. Remember that the output mod should override EverythingRandomizer.
 
+I'm not asking you to run it through Mod Manager, there's no need. Anyway, open
+the program and it'll walk you through it (paste a few paths).
+
 ### FAQ
 
 > Can I install/uninstall mid-game?
 
 It's hard to say. The short answer is sort of yes and no. From
-EverythingRandomizer's perspective, it is stateless and independent of saves, so
+EverythingRandomizer's perspective, it is stateless and saves agnostic, so
 technically you can. However, it still modifies Form data, and many scripts
 might get polluted by unexpected data. So, you can't. It's up to you.
 
@@ -53,8 +56,7 @@ might get polluted by unexpected data. So, you can't. It's up to you.
 
 Similar to the previous question, it's hard to say. If
 `EverythingRandomizer_protection.lua` is generated correctly, it should be
-_okay_. But the main issue remains the scripts. When playing with my own
-modlist, it was stable most of the time.
+_okay_. But the main issue remains the scripts.
 
 > Work for items added by other mods?
 

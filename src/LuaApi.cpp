@@ -369,6 +369,8 @@ namespace LuaPatcher
 			return sol::make_object(a_lua, LuaShout{ a_form });
 		case RE::FormType::Light:
 			return sol::make_object(a_lua, LuaLight{ a_form });
+		case RE::FormType::EncounterZone:
+			return sol::make_object(a_lua, LuaEncounterZone{ a_form });
 		default:
 			return sol::make_object(a_lua, LuaForm{ a_form });
 		}

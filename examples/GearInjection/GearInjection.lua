@@ -1,30 +1,18 @@
 -- LuaPatcher example: GearInjection — config-driven equipment injection
 -- priority: 40
 --
--- The successor to EquipmentInjection (which it fully replaces): everything is
--- driven by a single config table, so one script covers every "drop this mod's
--- gear into leveled lists" use case:
---
 --   * restrict to one plugin ("MyGear.esp") or scan every non-vanilla plugin
 --   * include/exclude by EditorID prefix
 --   * fixed level for simple cases, or vanilla-style balancing
---     (keyword -> level, fallback rating/DPS interpolation)
+--     (keyword -> level, fallback rating/DPS/value interpolation)
+--   * armor, weapons, ingredients and potions (potions/poisons/food)
 --   * skip enchanted / non-playable gear
---
--- Semantics:
---   * runs once at game load on pristine data
 --   * a form is injected only if NO leveled list references it in the game's
 --     original data (findLeveledListsContaining snapshot), so re-running is
 --     always idempotent
 --
--- Defaults reproduce the former EquipmentInjection behavior exactly
--- (scan every non-vanilla plugin, balanced levels, skip enchanted and
--- non-playable gear), so existing EquipmentInjection users can switch by
--- copying their config keys over.
---
 -- CONFIG (optional): Data/SKSE/Plugins/LuaPatcher/Scripts/GearInjection_config.lua
--- (flat sibling of the script, mirrors examples/ layout). Missing/invalid keys
--- fall back to the defaults below. Example:
+-- Example:
 --
 --   return {
 --     plugin = "MyGear.esp",
@@ -58,6 +46,8 @@ local CONFIG = {
     -- === Categories ===
     enableArmor = true,
     enableWeapon = true,
+    enableIngredients = true, -- ingredients join loot lists (value-balanced)
+    enablePotions = true,     -- potions / poisons / food (value-balanced)
 
     -- === Level ===
     -- "balanced": keyword -> level, else rating/DPS interpolation between
@@ -66,7 +56,7 @@ local CONFIG = {
     levelMode = "balanced",
     fixedLevel = 1,
     bottomLevel = 1,
-    topLevel = 46,   -- vanilla Daedric weapon/light 46, heavy 48 -> 46 unified
+    topLevel = 46,
     maxLevel = 50,
 
     -- === Filters ===
@@ -74,9 +64,9 @@ local CONFIG = {
     skipNonPlayable = true,
 
     -- === Distribution ===
-    count = 1,               -- count per entry (arrows: 12, gear: 1)
-    maxListsPerItem = 15,    -- 0 = every matching list (very strong)
-    injectionChance = 1.0,   -- per-list roll 0..1 after subset
+    count = 1,             -- count per entry (arrows: 12, gear: 1)
+    maxListsPerItem = 15,  -- 0 = every matching list (very strong)
+    injectionChance = 1.0, -- per-list roll 0..1 after subset
 }
 
 do
@@ -159,7 +149,7 @@ local function isUnassigned(form)
 end
 
 
-local function isInjectionCandidate(form)
+local function isInjectionCandidate(form, checkPlayable)
     if VANILLA[form.plugin] then return false end
 
     if CONFIG.plugin ~= "" and form.plugin ~= CONFIG.plugin then return false end
@@ -170,7 +160,8 @@ local function isInjectionCandidate(form)
 
     if hasEditorIdPrefix(form, CONFIG.excludeEditorIdPrefixes) then return false end
 
-    if CONFIG.skipNonPlayable and not form.playable then return false end
+    -- playable only exists on weapons/armors; alchemy items have no such flag
+    if checkPlayable and CONFIG.skipNonPlayable and not form.playable then return false end
 
     if CONFIG.skipEnchanted and form.enchantment then return false end
 
@@ -185,18 +176,43 @@ end
 -- Material -> level tables derived from UESP research: weapons per
 -- Weapons:Leveled_Lists, armor per slot split into Light/Heavy.
 local WEAPON_MATERIAL_LEVEL = {
-    ["Iron"] = 1,       ["Steel"] = 2,    ["Orcish"] = 6,    ["Dwarven"] = 12,
-    ["Nordic"] = 18,    ["Elven"] = 19,   ["Glass"] = 27,    ["Stalhrim"] = 35,
-    ["Ebony"] = 36,     ["Daedric"] = 46, ["Dragonbone"] = 46, ["Dragon"] = 46,
+    ["Iron"] = 1,
+    ["Steel"] = 2,
+    ["Orcish"] = 6,
+    ["Dwarven"] = 12,
+    ["Nordic"] = 18,
+    ["Elven"] = 19,
+    ["Glass"] = 27,
+    ["Stalhrim"] = 35,
+    ["Ebony"] = 36,
+    ["Daedric"] = 46,
+    ["Dragonbone"] = 46,
+    ["Dragon"] = 46,
 }
 
 local ARMOR_MATERIAL_LEVEL = {
-    ["Hide"] = 1,       ["Fur"] = 1,      ["Studded"] = 1,   ["Leather"] = 6,
-    ["Elven"] = 12,     ["Chitin"] = 11,  ["Scaled"] = 19,   ["Glass"] = 36,
-    ["Stalhrim"] = 35,  ["Dragonscale"] = 46,
-    ["Iron"] = 1,       ["Banded"] = 1,   ["Steel"] = 6,     ["SteelPlate"] = 18,
-    ["Dwarven"] = 12,   ["Orcish"] = 25,  ["Ebony"] = 32,    ["Dragonplate"] = 40,
-    ["Daedric"] = 48,   ["Bonemold"] = 1, ["Nordic"] = 18,   ["Imperial"] = 1,
+    ["Hide"] = 1,
+    ["Fur"] = 1,
+    ["Studded"] = 1,
+    ["Leather"] = 6,
+    ["Elven"] = 12,
+    ["Chitin"] = 11,
+    ["Scaled"] = 19,
+    ["Glass"] = 36,
+    ["Stalhrim"] = 35,
+    ["Dragonscale"] = 46,
+    ["Iron"] = 1,
+    ["Banded"] = 1,
+    ["Steel"] = 6,
+    ["SteelPlate"] = 18,
+    ["Dwarven"] = 12,
+    ["Orcish"] = 25,
+    ["Ebony"] = 32,
+    ["Dragonplate"] = 40,
+    ["Daedric"] = 48,
+    ["Bonemold"] = 1,
+    ["Nordic"] = 18,
+    ["Imperial"] = 1,
     ["Stormcloak"] = 1,
 }
 
@@ -224,6 +240,8 @@ local armorStats = {
     Clothing = { minVal = 0, maxVal = 2500 },
 }
 local weaponStats = { min = 0, max = 0 }
+local ingredientStats = { min = 0, max = 0 }
+local potionStats = { min = 0, max = 0 }
 
 local function percentile(sorted, p)
     if #sorted == 0 then return nil end
@@ -238,6 +256,7 @@ local function collectStats()
     if CONFIG.levelMode ~= "balanced" then return end
 
     local lightVals, heavyVals, clothingVals, weaponVals = {}, {}, {}, {}
+    local ingredientVals, potionVals = {}, {}
 
     for _, a in ipairs(lua_patcher.allArmors()) do
         if VANILLA[a.plugin] and a.playable and not a.enchantment then
@@ -267,6 +286,21 @@ local function collectStats()
         end
     end
 
+    -- Alchemy items have no playable/enchantment flags; their value is the
+    -- level proxy (ingredients store it in value, potions in costOverride).
+    for _, i in ipairs(lua_patcher.allIngredients()) do
+        if VANILLA[i.plugin] then
+            local v = i.costOverride or i.value or 0
+            if v > 0 then table.insert(ingredientVals, v) end
+        end
+    end
+    for _, p in ipairs(lua_patcher.allPotions()) do
+        if VANILLA[p.plugin] then
+            local v = p.costOverride or p.value or 0
+            if v > 0 then table.insert(potionVals, v) end
+        end
+    end
+
     local function set(vals, fallbackMin, fallbackMax)
         if #vals == 0 then return fallbackMin, fallbackMax end
         if #vals < 10 then
@@ -286,14 +320,19 @@ local function collectStats()
     armorStats.Heavy.min, armorStats.Heavy.max = set(heavyVals, 5, 40)
     armorStats.Clothing.minVal, armorStats.Clothing.maxVal = set(clothingVals, 0, 2500)
     weaponStats.min, weaponStats.max = set(weaponVals, 4, 30)
+    ingredientStats.min, ingredientStats.max = set(ingredientVals, 1, 50)
+    potionStats.min, potionStats.max = set(potionVals, 10, 500)
     if weaponStats.max <= weaponStats.min then weaponStats.max = weaponStats.min + 10 end
     if armorStats.Light.max <= armorStats.Light.min then armorStats.Light.max = armorStats.Light.min + 10 end
     if armorStats.Heavy.max <= armorStats.Heavy.min then armorStats.Heavy.max = armorStats.Heavy.min + 10 end
+    if ingredientStats.max <= ingredientStats.min then ingredientStats.max = ingredientStats.min + 10 end
+    if potionStats.max <= potionStats.min then potionStats.max = potionStats.min + 10 end
 
     print(string.format(
-        "GearInjection: vanilla stats Light[%.1f-%.1f] Heavy[%.1f-%.1f] ClothingVal[%d-%d] WeaponDPS[%.2f-%.2f]",
+        "GearInjection: vanilla stats Light[%.1f-%.1f] Heavy[%.1f-%.1f] ClothingVal[%d-%d] WeaponDPS[%.2f-%.2f] IngredientVal[%d-%d] PotionVal[%d-%d]",
         armorStats.Light.min, armorStats.Light.max, armorStats.Heavy.min, armorStats.Heavy.max,
-        armorStats.Clothing.minVal, armorStats.Clothing.maxVal, weaponStats.min, weaponStats.max))
+        armorStats.Clothing.minVal, armorStats.Clothing.maxVal, weaponStats.min, weaponStats.max,
+        ingredientStats.min, ingredientStats.max, potionStats.min, potionStats.max))
 end
 
 collectStats()
@@ -349,6 +388,15 @@ local function calcWeaponLevel(weapon)
 end
 
 
+-- Alchemy level = value interpolation (ingredients store their value in
+-- `value`, potions/poisons/food in `costOverride`).
+local function calcAlchemyLevel(form, stats)
+    if CONFIG.levelMode ~= "balanced" then return CONFIG.fixedLevel end
+    local v = form.costOverride or form.value or 0
+    return levelFromInterpolation(v, stats.min, stats.max)
+end
+
+
 -- ---------------------------------------------------------------------------
 -- Injection
 -- ---------------------------------------------------------------------------
@@ -391,12 +439,14 @@ end
 
 
 local injectedArmor, injectedWeapons = 0, 0
+local injectedIngredients, injectedPotions = 0, 0
 local levelHistArmor, levelHistWeapon = {}, {}
+local levelHistIngredient, levelHistPotion = {}, {}
 
 if CONFIG.enableArmor then
     for _, armor in ipairs(lua_patcher.allArmors()) do
         local t = armor.armorType
-        if (t == "Light" or t == "Heavy" or t == "Clothing") and isInjectionCandidate(armor) then
+        if (t == "Light" or t == "Heavy" or t == "Clothing") and isInjectionCandidate(armor, true) then
             local lvl = calcArmorLevel(armor)
             local added = inject(armor, lvl)
             if added > 0 then
@@ -415,7 +465,7 @@ if CONFIG.enableWeapon then
     for _, weapon in ipairs(lua_patcher.allWeapons()) do
         local skill, ranged = weapon.skill, weapon.ranged
         local isWeaponType = skill == "OneHanded" or skill == "TwoHanded" or ranged
-        if isWeaponType and isInjectionCandidate(weapon) then
+        if isWeaponType and isInjectionCandidate(weapon, true) then
             local lvl = calcWeaponLevel(weapon)
             local added = inject(weapon, lvl)
             if added > 0 then
@@ -430,6 +480,40 @@ else
     print("GearInjection: weapon injection disabled by config")
 end
 
+if CONFIG.enableIngredients then
+    for _, ingredient in ipairs(lua_patcher.allIngredients()) do
+        if isInjectionCandidate(ingredient, false) then
+            local lvl = calcAlchemyLevel(ingredient, ingredientStats)
+            local added = inject(ingredient, lvl)
+            if added > 0 then
+                injectedIngredients = injectedIngredients + added
+                levelHistIngredient[lvl] = (levelHistIngredient[lvl] or 0) + 1
+                print(string.format("GearInjection: ingredient %s value=%s -> level %d added=%d",
+                    ingredient.identifier, tostring(ingredient.costOverride or ingredient.value), lvl, added))
+            end
+        end
+    end
+else
+    print("GearInjection: ingredient injection disabled by config")
+end
+
+if CONFIG.enablePotions then
+    for _, potion in ipairs(lua_patcher.allPotions()) do
+        if isInjectionCandidate(potion, false) then
+            local lvl = calcAlchemyLevel(potion, potionStats)
+            local added = inject(potion, lvl)
+            if added > 0 then
+                injectedPotions = injectedPotions + added
+                levelHistPotion[lvl] = (levelHistPotion[lvl] or 0) + 1
+                print(string.format("GearInjection: potion %s value=%s -> level %d added=%d",
+                    potion.identifier, tostring(potion.costOverride or potion.value), lvl, added))
+            end
+        end
+    end
+else
+    print("GearInjection: potion injection disabled by config")
+end
+
 local function histToString(h)
     local parts = {}
     for lvl = BOTTOM_LEVEL, MAX_LEVEL do
@@ -439,8 +523,10 @@ local function histToString(h)
 end
 
 print(string.format(
-    "GearInjection: injected %d armor-entries and %d weapon-entries into %d leveled lists (plugin='%s' mode=%s maxPerItem=%d chance=%.2f)",
-    injectedArmor, injectedWeapons, #targetLists, CONFIG.plugin, CONFIG.levelMode, CONFIG.maxListsPerItem,
-    CONFIG.injectionChance))
+    "GearInjection: injected %d armor, %d weapon, %d ingredient and %d potion entries into %d leveled lists (plugin='%s' mode=%s maxPerItem=%d chance=%.2f)",
+    injectedArmor, injectedWeapons, injectedIngredients, injectedPotions, #targetLists, CONFIG.plugin,
+    CONFIG.levelMode, CONFIG.maxListsPerItem, CONFIG.injectionChance))
 print("GearInjection: armor level hist (distinct items) -> " .. histToString(levelHistArmor))
 print("GearInjection: weapon level hist (distinct items) -> " .. histToString(levelHistWeapon))
+print("GearInjection: ingredient level hist (distinct items) -> " .. histToString(levelHistIngredient))
+print("GearInjection: potion level hist (distinct items) -> " .. histToString(levelHistPotion))

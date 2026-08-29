@@ -6,7 +6,7 @@ return {
 
     -- The seed. Change it to get a new world on the next launch.
     -- It must be an integer.
-    seed = 7777,
+    seed = 1234,
 
     -- =====================================================================
     -- Filtering — what never gets shuffled
@@ -27,14 +27,14 @@ return {
     -- List-level filters (apply to leveled lists, FormLists and containers):
     -- includePrefixes empty = all lists; otherwise only matching EditorIDs.
     -- excludePrefixes e.g. { "LItemQuest" } (quest-list protection)
-    -- excludeSuffixes e.g. { "Unique" }
     includePrefixes = {},
     excludePrefixes = {},
     excludeSuffixes = {},
 
     -- Smithing material sets (WeapMaterialSteelSet, ...) stay intact by
     -- default so tempering keeps working; remove "Set" to shuffle them too.
-    formListExcludeSuffixes = { "Set" },
+    -- formListExcludeSuffixes = { "Set" },
+    formListExcludeSuffixes = {},
 
     -- =====================================================================
     -- Difficulty — how much of the vanilla power curve survives
@@ -43,21 +43,21 @@ return {
     -- damage / armor rating) within a window:
     --   tierBands  slices the power-ordered pool into bands
     --   tierDrift  widens the pairing window: 0 = strict bands (early game
-    --              stays early), 1 = full chaos (old flat behavior)
+    --              stays early), 1 = full chaos
     -- enchantedLootRatio caps the Ench* variants that join the loot pools
     -- (1.0 = as vanilla, 0 = enchanted loot stays exactly where vanilla put
     -- it, only base forms shuffle).
     tierBands = 4,
-    tierDrift = 0.3,
-    enchantedLootRatio = 1.0,
+    tierDrift = 1,
+    enchantedLootRatio = 0.5,
 
     -- =====================================================================
     -- Shuffles — which domains get randomized
     -- =====================================================================
     -- Leveled lists (drops / chests / vendors / NPC spawns / spell lists)
     shuffleLeveledItems = true,
-    shuffleLeveledCharacters = false, -- NPC spawn lists; Note: Not recommended to enable, this will cause mobs to spawn *everywhere*, it's basically Skyrim GTA Edition
-    shuffleLeveledSpells = true,      -- spell leveled lists
+    shuffleLeveledCharacters = true, -- NPC spawn lists; Note: Weird, in some modlist, this will cause mobs to spawn *everywhere*, it's basically Skyrim GTA Edition
+    shuffleLeveledSpells = true,     -- spell leveled lists
     -- FormList contents (vendor stock, groups, ...)
     shuffleFormLists = true,
     -- Container contents (chests / lootable objects); slots keep their count
@@ -68,7 +68,7 @@ return {
     shuffleEnchantments = false, -- enchantment effect slots swap
     shuffleShouts = true,        -- shout spell variations swap
     -- Gear enchantment swap (weapon-type <-> weapon-type, armor-type <-> armor-type)
-    shuffleGearEnchantments = true,
+    shuffleGearEnchantments = false,
     -- Encounter zone difficulty swap (order-preserving: each zone only trades
     -- levels with neighbors up to zoneSwapWindow tiers away)
     shuffleEncounterZones = true,

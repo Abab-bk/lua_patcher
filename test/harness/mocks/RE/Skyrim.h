@@ -37,6 +37,7 @@ namespace RE
 		LeveledItem = 49,
 		LeveledSpell = 51,
 		LeveledNPC = 52,
+		EncounterZone = 67,
 		Shout = 119,
 	};
 
@@ -79,6 +80,8 @@ namespace RE
 			return "Light";
 		case FormType::Shout:
 			return "Shout";
+		case FormType::EncounterZone:
+			return "EncounterZone";
 		default:
 			return "Unknown";
 		}

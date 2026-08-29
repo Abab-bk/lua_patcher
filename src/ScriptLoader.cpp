@@ -32,6 +32,15 @@ namespace
 		return filename.ends_with("_config.lua");
 	}
 
+	bool IsModuleFile(const std::filesystem::path& a_path)
+	{
+		// Module files ("_" prefix) are pulled in via require() and never
+		// executed directly: "_randomizer_util.lua" next to
+		// EverythingRandomizer.lua, resolved through package.path.
+		const auto filename = a_path.filename().string();
+		return !filename.empty() && filename.front() == '_';
+	}
+
 	// Scripts declare an execution order with a "-- priority: N" comment;
 	// missing declarations default to 0 and run first.
 	int ReadScriptPriority(const std::filesystem::path& a_path)
@@ -107,7 +116,8 @@ namespace LuaPatcher
 		// priorities.
 		std::vector<std::pair<int, fs::path>> scripts;
 		for (const auto& entry : fs::recursive_directory_iterator(base)) {
-			if (entry.is_regular_file() && HasLuaExtension(entry.path()) && !IsConfigFile(entry.path())) {
+			if (entry.is_regular_file() && HasLuaExtension(entry.path()) && !IsConfigFile(entry.path()) &&
+				!IsModuleFile(entry.path())) {
 				scripts.emplace_back(ReadScriptPriority(entry.path()), entry.path());
 			}
 		}
@@ -143,6 +153,19 @@ namespace LuaPatcher
 
 		for (const auto& [priority, script] : scripts) {
 			logger::info("LuaPatcher: running script '{}' (priority {})", script.generic_string(), priority);
+
+			// Modules resolve next to the script that requires them: prepend
+			// the script's folder to package.path so require("_foo") finds
+			// Scripts/_foo.lua (idempotent per folder across scripts).
+			if (script.has_parent_path()) {
+				const std::string modulePath = script.parent_path().generic_string() + "/?.lua";
+				const std::string pkgPath =
+					lua["package"]["path"].get<sol::optional<std::string>>().value_or("");
+				if (pkgPath.find(modulePath) == std::string::npos) {
+					lua["package"]["path"] = modulePath + ";" + pkgPath;
+				}
+			}
+
 			RunScript(lua, script);
 		}
 	}

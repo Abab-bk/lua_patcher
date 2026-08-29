@@ -9,10 +9,22 @@ EverythingRandomizer can randomize many things:
 Modify the configuration via `EverythingRandomizer_config.lua`, which includes
 explanatory comments inside the file.
 
+### How to start
+
+1. Install the mod and it's dependencies normally.
+2. (optional) Open file:
+   `ModFolder/SKSE/Plugins/LuaPatcher/Scripts/EverythingRandomizer_config.lua`.
+   Change "seed" to ANY integer.
+3. (optional but recommanded) Generating EverythingRandomizer_protection.lua.
+   See below.
+
 ### Generating EverythingRandomizer_protection.lua
 
 This prevents quest-related data from being randomized. Download `protectgen`
 from Releases, run the program, and follow the instructions.
+
+I suggest you set the output path to an empty mod, similar to how BodySlide
+works. Remember that the output mod should override EverythingRandomizer.
 
 ### FAQ
 

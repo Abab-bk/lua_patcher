@@ -175,23 +175,23 @@ def _copy_single_example(example: str, mods_folder: str) -> None:
 
     scripts_dir = Path(mods_folder) / MOD_FOLDER_NAME / SCRIPTS_RELATIVE
     scripts_dir.mkdir(parents=True, exist_ok=True)
-    dst = scripts_dir / src.name
-    shutil.copy2(src, dst)
-    print(f"Copied example '{example}' -> {dst}")
 
-    cfg_src = _find_example_config(example)
-    if cfg_src:
-        # Flat sibling: Scripts/<Name>.lua + Scripts/<Name>_config.lua (same directory, matches examples/)
-        cfg_dst = scripts_dir / cfg_src.name
-        shutil.copy2(cfg_src, cfg_dst)
-        print(f"Copied config {cfg_src.name} -> {cfg_dst}")
+    # Every .lua in the example folder ships as a flat sibling (script,
+    # config, modules like _randomizer_util.lua, generated datasets like
+    # *_protection.lua) — mirrors the examples/ layout exactly.
+    example_dir = EXAMPLES_ROOT / example
+    if example_dir.is_dir():
+        luas = sorted(example_dir.glob("*.lua"))
+    else:
+        # Legacy flat example: <Name>.lua + optional <Name>_config.lua
+        luas = [p for p in [src, _find_example_config(example)] if p]
+    if not luas:
+        raise Exit(f"no .lua files found for example '{example}'")
 
-    # Extra generated data files (e.g. EverythingRandomizer_protection.lua)
-    # ship as flat siblings too, so tryLoadConfig finds them next to the script.
-    for extra in src.parent.glob("*_protection.lua"):
-        extra_dst = scripts_dir / extra.name
-        shutil.copy2(extra, extra_dst)
-        print(f"Copied data {extra.name} -> {extra_dst}")
+    for lua in luas:
+        dst = scripts_dir / lua.name
+        shutil.copy2(lua, dst)
+        print(f"Copied {lua.name} -> {dst}")
 
 
 @task
@@ -350,11 +350,6 @@ def package(c: Context, build_dir: str = "", version: str = ""):
 
     print(f"\nPackage: {zip_name}")
 
-    github_output = os.environ.get("GITHUB_OUTPUT", "")
-    if github_output:
-        with open(github_output, "a", encoding="utf-8") as f:
-            f.write(f"zip={zip_name}\n")
-
 
 @task(aliases=["packageExample"])
 def package_example(
@@ -368,6 +363,7 @@ def package_example(
     Packages examples/<Name>/ as a standalone mod with flat sibling layout:
         SKSE/Plugins/LuaPatcher/Scripts/<Name>.lua
         SKSE/Plugins/LuaPatcher/Scripts/<Name>_config.lua  (same directory, mirrors examples/)
+    (every .lua in the example folder ships: script, config, modules, datasets)
 
     --example NAME  example folder/name to package (default: EverythingRandomizer)
     --version X.Y.Z override version (default: git tag or CMakeLists.txt)
@@ -430,23 +426,21 @@ def package_example(
 
     tmp = Path(tempfile.mkdtemp())
     try:
-        # Flat sibling structure (mirrors examples/): Scripts/<Name>.lua + Scripts/<Name>_config.lua
+        # Flat sibling structure (mirrors examples/): every .lua in the
+        # example folder ships (script, config, modules, generated datasets).
+        example_dir = EXAMPLES_ROOT / chosen
+        if example_dir.is_dir():
+            luas = sorted(example_dir.glob("*.lua"))
+        else:
+            luas = [p for p in [src, cfg_src] if p]
+        if not luas:
+            raise Exit(f"no .lua files found for example '{chosen}'")
+
         scripts_dir = tmp / SCRIPTS_RELATIVE
         scripts_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, scripts_dir / src.name)
-        print(f"Added script: {SCRIPTS_RELATIVE / src.name}")
-
-        if cfg_src:
-            cfg_dst = scripts_dir / cfg_src.name
-            shutil.copy2(cfg_src, cfg_dst)
-            print(f"Added config: {SCRIPTS_RELATIVE / cfg_dst.name} (from {cfg_src.name})")
-        else:
-            print(f"No config found for '{chosen}' (looked for {chosen}_config.lua), packaging script only")
-
-        # Extra generated data files (e.g. EverythingRandomizer_protection.lua)
-        for extra in src.parent.glob("*_protection.lua"):
-            shutil.copy2(extra, scripts_dir / extra.name)
-            print(f"Added data: {SCRIPTS_RELATIVE / extra.name}")
+        for lua in luas:
+            shutil.copy2(lua, scripts_dir / lua.name)
+            print(f"Added script: {SCRIPTS_RELATIVE / lua.name}")
 
         # Create zip: (cd "$tmp" && 7z a -tzip out.zip SKSE > /dev/null)
         out_zip = tmp / "out.zip"
@@ -468,12 +462,6 @@ def package_example(
         shutil.rmtree(tmp, ignore_errors=True)
 
     print(f"\nPackageExample: {zip_name}  (example={chosen} version={ver})")
-
-    github_output = os.environ.get("GITHUB_OUTPUT", "")
-    if github_output:
-        with open(github_output, "a", encoding="utf-8") as f:
-            f.write(f"zip_example={zip_name}\n")
-            f.write(f"example={chosen}\n")
 
 
 @task
@@ -629,11 +617,6 @@ def package_tools(c: Context, version: str = "", out: str = ""):
         shutil.rmtree(tmp, ignore_errors=True)
 
     print(f"\nPackageTools: {zip_name}  (version={ver})")
-
-    github_output = os.environ.get("GITHUB_OUTPUT", "")
-    if github_output:
-        with open(github_output, "a", encoding="utf-8") as f:
-            f.write(f"zip_tools={zip_name}\n")
 
 
 @task(aliases=["listExamples"])

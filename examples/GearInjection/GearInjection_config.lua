@@ -24,6 +24,10 @@ return {
     -- === Categories ===
     enableArmor = true,
     enableWeapon = true,
+    -- Alchemy items join loot lists too (value-balanced levels). They have no
+    -- playable/enchanted flags, so the filter section below skips those checks.
+    enableIngredients = true,
+    enablePotions = true,
 
     -- === Level ===
     -- "balanced": keyword -> level, else rating/DPS interpolation (recommended)

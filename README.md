@@ -59,9 +59,8 @@ xwin splat --output ~/.xwin
 
 #### Configure deploy path
 
-Copy `.env.example` to `.env` if you don't have one yet (the init script does
-this for you), then set `SKYRIM_MODS_FOLDER` to your mod manager's staging
-folder:
+Create `.env` (gitignored) with `export SKYRIM_MODS_FOLDER=<path>` and
+`export SKYRIM_FOLDER=<path>`, pointing at your mod manager's staging folder:
 
 ```bash
 # MO2:
@@ -71,8 +70,6 @@ SKYRIM_MODS_FOLDER=$HOME/MO2/mods
 #### Build
 
 ```bash
-./scripts/build.sh
-# or directly:
 cmake --preset release-linux
 cmake --build --preset release-linux
 ```

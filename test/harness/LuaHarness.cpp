@@ -979,11 +979,13 @@ llChar:clear()
 		DoString(lua, example.c_str());
 
 		// Same candidate set as the former EquipmentInjection by default (plugin = ""):
-		//   injected: helmet (light), chest (heavy), bow (ranged)
+		//   injected: helmet (light), chest (heavy), bow (ranged),
+		//             GearIngredient, GearPotion (alchemy has no playable flag)
 		//   excluded: sword (enchanted), sword2 (non-playable),
 		//             vanillaChest (vanilla plugin), assignedArmor (already in a list)
 		for (auto* list : lootLists) {
 			bool hasHelmet = false, hasChest = false, hasBow = false;
+			bool hasIngredient = false, hasPotion = false;
 			bool hasSword = false, hasSword2 = false, hasVanilla = false, hasAssigned = false;
 			for (const auto& e : list->entries) {
 				if (e.form == helmet)
@@ -992,6 +994,10 @@ llChar:clear()
 					hasChest = true;
 				if (e.form == bow)
 					hasBow = true;
+				if (e.form == ingredient)
+					hasIngredient = true;
+				if (e.form == potion)
+					hasPotion = true;
 				if (e.form == sword)
 					hasSword = true;
 				if (e.form == sword2)
@@ -1001,7 +1007,8 @@ llChar:clear()
 				if (e.form == assignedArmor)
 					hasAssigned = true;
 			}
-			Check(hasHelmet && hasChest && hasBow, "gearinjection: gear injected into each loot list");
+			Check(hasHelmet && hasChest && hasBow && hasIngredient && hasPotion,
+				"gearinjection: gear and alchemy injected into each loot list");
 			Check(!hasSword && !hasSword2 && !hasVanilla, "gearinjection: excluded gear stays out");
 		}
 		// assignedArmor must remain in exactly one list
@@ -1060,12 +1067,31 @@ llChar:clear()
 		// exact-file-name load: loadLua("Foo.lua") loads Foo.lua as-is
 		// (generated datasets like EverythingRandomizer_protection.lua)
 		writeScript("ExactConfig.lua", "return { protected = { [123] = true } }\n");
+		// module files ("_" prefix) are never picked up as top-level scripts,
+		// but ARE loadable via require() from sibling scripts (package.path
+		// points at the scripts folder). _lib's top-level line adds a form to
+		// llChar; with a correct loader it runs exactly once (via the require
+		// in zz_40_module) — if the loader also executed it standalone, llChar
+		// would end up with the form twice.
+		llChar->entries.clear();
+		llChar->numEntries = 0;
+		writeScript("_lib.lua",
+			"lua_patcher.leveledList(\"MockPlugin.esp\", \"00000400\"):add(\"MockFormE\")\n"
+			"return { formName = \"MockFormA\" }\n");
+		writeScript("zz_40_module.lua",
+			"-- priority: 40\n"
+			"local lib = require(\"_lib\")\n"
+			"assert(lib.formName == \"MockFormA\", \"require returned the module table\")\n"
+			"local ll = lua_patcher.leveledList(\"MockPlugin.esp\", \"00000100\")\n"
+			"ll:remove(\"MockFormD\")\n"
+			"ll:add(lib.formName)\n");
 
 		LuaPatcher::RunScripts();
 
 		Check(llMain->numEntries == 1, "script runner: chain left exactly one entry");
-		Check(llMain->entries[0].form == formD, "script runner: last-priority marker survives");
+		Check(llMain->entries[0].form == formA, "script runner: module-required form applied");
 		Check(llMain->entries[0].form != formE, "script runner: config file not executed");
+		Check(llChar->numEntries == 1, "script runner: module executed once, via require only");
 		{
 			sol::protected_function_result res = lua.safe_script(
 				"local t = lua_patcher.loadLua(\"ExactConfig.lua\")\n"
@@ -1243,6 +1269,12 @@ llChar:clear()
 			{ enchSword, 1, 4 },
 		});
 
+		// The example now pulls its helpers in via require(); mirror the
+		// loader's package.path behavior (script folder first) so the modules
+		// resolve from the examples/ tree the harness actually runs.
+		lua["package"]["path"] =
+			"examples/EverythingRandomizer/?.lua;" + lua["package"]["path"].get<sol::optional<std::string>>().value_or("");
+
 		// run 1: defaults (no config -> seed 1337)
 		resetWorld();
 		DoString(lua, example.c_str());
@@ -1308,6 +1340,56 @@ llChar:clear()
 		Check(lootLists[1]->entries[3].form == enchSword, "randomizer: Ench variant stayed in its list");
 
 		fs::remove_all("Data");
+	}
+
+	// --- encounter zones: typed dispatch + difficulty swap ------------------
+	// Regression: allEncounterZones() must push EncounterZone userdata (not
+	// plain Form), or z.hasLevels raises "unknown property" at runtime.
+	{
+		auto* zoneWeak =
+			AddForm<RE::BGSEncounterZone>(0x0300A000, RE::FormType::EncounterZone, "ZoneWeak", "Zone Weak", gearMod);
+		zoneWeak->data.minLevel = 1;
+		zoneWeak->data.maxLevel = 10;
+
+		auto* zoneStrong =
+			AddForm<RE::BGSEncounterZone>(0x0300A001, RE::FormType::EncounterZone, "ZoneStrong", "Zone Strong", gearMod);
+		zoneStrong->data.minLevel = 40;
+		zoneStrong->data.maxLevel = 60;
+
+		auto* zoneUnset =
+			AddForm<RE::BGSEncounterZone>(0x0300A002, RE::FormType::EncounterZone, "ZoneUnset", "Zone Unset", gearMod);
+		// minLevel/maxLevel stay -1 (unset, falls back to location defaults)
+
+		DoString(lua,
+			"local zones = lua_patcher.allEncounterZones()\n"
+			"assert(#zones == 3)\n"
+			"local weak = lua_patcher.getForm(\"ZoneWeak\")\n"
+			"assert(weak.type == \"EncounterZone\", \"typed dispatch\")\n"
+			"assert(weak.hasLevels == true and weak.minLevel == 1 and weak.maxLevel == 10)\n"
+			"local unset = lua_patcher.getForm(\"ZoneUnset\")\n"
+			"assert(unset.hasLevels == false and unset.minLevel == -1 and unset.maxLevel == -1)\n");
+
+		DoString(lua,
+			"local shuffles = require(\"_randomizer_shuffles\")\n"
+			"local ctx = { config = { zoneSwapWindow = 3 }, isExcluded = function() return false end, skipped = 0 }\n"
+			"math.randomseed(1337)\n"
+			"local changed = shuffles.encounterZones(ctx)\n"
+			"local weak = lua_patcher.getForm(\"ZoneWeak\")\n"
+			"local strong = lua_patcher.getForm(\"ZoneStrong\")\n"
+			"local unset = lua_patcher.getForm(\"ZoneUnset\")\n"
+			"assert(changed == 2 or changed == 4, \"each swapping pair counts two level changes\")\n"
+			"assert(unset.minLevel == -1 and unset.maxLevel == -1, \"unset zone untouched\")\n"
+			"assert(weak.minLevel <= weak.maxLevel and strong.minLevel <= strong.maxLevel, \"pairs stay ordered\")\n"
+			"assert((weak.minLevel == 1 and strong.minLevel == 40) or (weak.minLevel == 40 and strong.minLevel == 1), "
+			"\"level pair swapped whole\")\n"
+			"local firstWeak, firstStrong = weak.minLevel, strong.minLevel\n"
+			"-- reset and rerun: identical seed reproduces the layout\n"
+			"weak.minLevel, weak.maxLevel = 1, 10\n"
+			"strong.minLevel, strong.maxLevel = 40, 60\n"
+			"math.randomseed(1337)\n"
+			"local changed2 = shuffles.encounterZones(ctx)\n"
+			"assert(changed2 == changed and weak.minLevel == firstWeak and strong.minLevel == firstStrong, "
+			"\"same seed -> identical layout\")\n");
 	}
 
 	std::printf("All harness checks passed.\n");

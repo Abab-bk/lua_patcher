@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/pyright/main/packages/vscode-pyright/schemas/pyrightconfig.schema.json",
-  "include": ["scripts", "tasks.py"],
+  "include": ["tasks.py"],
   "exclude": ["**/__pycache__"],
   "pythonVersion": "3.10",
   "typeCheckingMode": "standard",

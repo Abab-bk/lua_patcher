@@ -291,7 +291,9 @@ PROSE_INTRO = """# LuaPatcher API Reference
 LuaPatcher patches Skyrim SE/AE game forms at runtime. Scripts live in
 `Data/SKSE/Plugins/LuaPatcher/Scripts/` (recursively scanned, sorted), run once
 at game load. Sibling `*_config.lua` files are **not** executed as scripts; they
-are user configuration loaded on demand via `lua_patcher.loadLua`.
+are user configuration loaded on demand via `lua_patcher.loadLua`. Files whose
+name starts with `_` are modules: never executed directly, loaded with
+`require("_name")` from sibling scripts.
 
 ## `lua_patcher` module
 """
@@ -302,12 +304,19 @@ PROSE_SCRIPT_LAYOUT = """## Script layout
 Data/SKSE/Plugins/LuaPatcher/Scripts/
   MyMod.lua              # executed at load
   MyMod_config.lua       # NOT executed; loaded via lua_patcher.loadLua("MyMod_config.lua")
+  _MyMod_util.lua        # NOT executed; loaded via require("_MyMod_util")
 ```
 
 Scripts run in priority order: a `-- priority: N` comment (first 512 bytes of the
 file) sets the execution order, lowest first; scripts without a declaration get
 priority 0 and run first. Equal priorities fall back to path order. EverythingRandomizer
 declares priority 50 so user scripts in the 10-40 range run before it.
+
+Modules are plain Lua files loaded with `require`; the script folder is
+prefixed to `package.path`, so `require("_MyMod_util")` resolves to
+`Scripts/_MyMod_util.lua`. Modules can require other modules and are cached
+like standard Lua modules. EverythingRandomizer splits its shuffles across
+`_randomizer_util.lua`, `_randomizer_shuffles.lua` and `_randomizer_jitter.lua`.
 
 Config chunks return a table; `loadLua` returns it (or nil when the file
 is missing or fails to load). Scripts typically merge it over defaults:

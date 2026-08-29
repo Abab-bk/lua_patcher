@@ -444,7 +444,8 @@ namespace LuaPatcher
 			auto* list = ToLeveledList(a_list);
 			const auto ref = ParseFormRef(a_args, "add");
 			auto* form = ref.form;
-			auto args = ParseLevelCount(VariadicArg(a_args, ref.consumed), VariadicArg(a_args, ref.consumed + 1), "add");
+			auto args =
+				ParseLevelCount(VariadicArg(a_args, ref.consumed), VariadicArg(a_args, ref.consumed + 1), "add");
 
 			if (InsertEntry(list, form, args.level, args.count, true)) {
 				logger::debug("LuaPatcher: {:08X} added Form {:08X}", listForm->formID, form->formID);
@@ -456,8 +457,8 @@ namespace LuaPatcher
 			auto* list = ToLeveledList(a_list);
 			const auto ref = ParseFormRef(a_args, "addIfAbsent");
 			auto* form = ref.form;
-			auto args = ParseLevelCount(
-				VariadicArg(a_args, ref.consumed), VariadicArg(a_args, ref.consumed + 1), "addIfAbsent");
+			auto args = ParseLevelCount(VariadicArg(a_args, ref.consumed), VariadicArg(a_args, ref.consumed + 1),
+				"addIfAbsent");
 
 			const bool added = InsertEntry(list, form, args.level, args.count, false);
 			logger::debug("LuaPatcher: {:08X} addIfAbsent Form {:08X} added: {}", listForm->formID, form->formID,
@@ -540,9 +541,9 @@ namespace LuaPatcher
 			if (a_args.size() <= fromRef.consumed) {
 				throw sol::error{ "bad argument to 'replace' (missing replacement form reference)" };
 			}
-			const auto toRef =
-				ParseFormRef(sol::variadic_args(a_args.lua_state(), a_args.stack_index() + static_cast<int>(fromRef.consumed)),
-					"replace");
+			const auto toRef = ParseFormRef(
+				sol::variadic_args(a_args.lua_state(), a_args.stack_index() + static_cast<int>(fromRef.consumed)),
+				"replace");
 			auto* from = fromRef.form;
 			auto* to = toRef.form;
 

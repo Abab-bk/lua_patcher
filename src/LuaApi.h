@@ -58,12 +58,10 @@ namespace LuaPatcher
 	{};
 
 	struct LuaLight : LuaForm
-	{
-	};
+	{};
 
 	struct LuaEncounterZone : LuaForm
-	{
-	};
+	{};
 
 	// Fallback __index handler: raises a Lua error for unknown properties
 	// instead of silently returning nil (matches the pre-sol2 behavior).

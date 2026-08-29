@@ -92,9 +92,7 @@ namespace LuaPatcher
 			"setEffects",
 			[](LuaPotion& a_form, const sol::object& a_list) { Effects::SetEffectList(ToPotion(a_form), a_list); },
 			"addEffect",
-			[](LuaPotion& a_form, sol::variadic_args a_args) {
-				return Effects::AddEffect(ToPotion(a_form), a_args);
-			},
+			[](LuaPotion& a_form, sol::variadic_args a_args) { return Effects::AddEffect(ToPotion(a_form), a_args); },
 			"clearEffects", [](LuaPotion& a_form) { Effects::ClearEffects(ToPotion(a_form)); });
 
 		sol::table patcher = a_lua["lua_patcher"].get<sol::table>();

@@ -337,11 +337,13 @@ namespace LuaPatcher
 				}),
 			"addKeyword",
 			[](LuaSpell& a_form, sol::variadic_args a_args) {
-				return a_form.form->As<RE::SpellItem>()->AddKeyword(CheckKeyword(ParseFormRef(a_args, "addKeyword").form));
+				return a_form.form->As<RE::SpellItem>()->AddKeyword(
+					CheckKeyword(ParseFormRef(a_args, "addKeyword").form));
 			},
 			"removeKeyword",
 			[](LuaSpell& a_form, sol::variadic_args a_args) {
-				return a_form.form->As<RE::SpellItem>()->RemoveKeyword(CheckKeyword(ParseFormRef(a_args, "removeKeyword").form));
+				return a_form.form->As<RE::SpellItem>()->RemoveKeyword(
+					CheckKeyword(ParseFormRef(a_args, "removeKeyword").form));
 			});
 
 		a_lua.new_usertype<LuaMagicEffect>(
@@ -449,11 +451,13 @@ namespace LuaPatcher
 			}),
 			"addKeyword",
 			[](LuaMagicEffect& a_form, sol::variadic_args a_args) {
-				return a_form.form->As<RE::EffectSetting>()->AddKeyword(CheckKeyword(ParseFormRef(a_args, "addKeyword").form));
+				return a_form.form->As<RE::EffectSetting>()->AddKeyword(
+					CheckKeyword(ParseFormRef(a_args, "addKeyword").form));
 			},
 			"removeKeyword",
 			[](LuaMagicEffect& a_form, sol::variadic_args a_args) {
-				return a_form.form->As<RE::EffectSetting>()->RemoveKeyword(CheckKeyword(ParseFormRef(a_args, "removeKeyword").form));
+				return a_form.form->As<RE::EffectSetting>()->RemoveKeyword(
+					CheckKeyword(ParseFormRef(a_args, "removeKeyword").form));
 			});
 
 		sol::table patcher = a_lua["lua_patcher"].get<sol::table>();

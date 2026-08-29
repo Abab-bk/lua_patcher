@@ -167,8 +167,8 @@ namespace LuaPatcher::Effects
 		}
 
 		const sol::optional<sol::object> a_options =
-			optionsIndex < a_args.size() ? sol::optional<sol::object>{ a_args.get<sol::object>(optionsIndex) }
-			                             : sol::nullopt;
+			optionsIndex < a_args.size() ? sol::optional<sol::object>{ a_args.get<sol::object>(optionsIndex) } :
+										   sol::nullopt;
 
 		if (firstIsSnapshot) {
 			if (a_options) {

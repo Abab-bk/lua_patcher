@@ -117,10 +117,10 @@ namespace
 	}
 
 	// Whitelisted file loader: loads Data/SKSE/Plugins/LuaPatcher/Scripts/<name>
-// exactly as given ("EverythingRandomizer_protection.lua",
-// "MyMod_config.lua", ...). Returns the chunk's return value (usually a
-// table) or nil on miss/error.
-// Security: name must be a plain file name, no path separators or "..".
+	// exactly as given ("EverythingRandomizer_protection.lua",
+	// "MyMod_config.lua", ...). Returns the chunk's return value (usually a
+	// table) or nil on miss/error.
+	// Security: name must be a plain file name, no path separators or "..".
 	sol::object LoadLua(sol::this_state a_state, const sol::object& a_name)
 	{
 		sol::state_view lua(a_state);
@@ -291,19 +291,16 @@ namespace LuaPatcher
 				const auto formId = a_args.get<sol::object>(1).as<std::string_view>();
 				auto* form = LookupFormByPluginFormId(plugin, formId);
 				if (!form) {
-					throw sol::error{
-						fmt::format("bad argument #1-2 to '{}' (form '{}|{}' not found)", a_method, plugin, formId)
-					};
+					throw sol::error{ fmt::format("bad argument #1-2 to '{}' (form '{}|{}' not found)", a_method,
+						plugin, formId) };
 				}
 				return { form, 2 };
 			}
 
 			auto* form = LookupFormByEditorId(first.as<std::string_view>());
 			if (!form) {
-				throw sol::error{
-					fmt::format("bad argument #1 to '{}' (no form with editorID '{}' is loaded)", a_method,
-						first.as<std::string_view>())
-				};
+				throw sol::error{ fmt::format("bad argument #1 to '{}' (no form with editorID '{}' is loaded)",
+					a_method, first.as<std::string_view>()) };
 			}
 			return { form, 1 };
 		}
@@ -322,7 +319,8 @@ namespace LuaPatcher
 		const sol::object first = a_args.get<sol::object>(0);
 		if (first.is<std::string>()) {
 			if (a_args.size() >= 2 && a_args.get<sol::object>(1).is<std::string>()) {
-				return LookupFormByPluginFormId(first.as<std::string_view>(), a_args.get<sol::object>(1).as<std::string_view>());
+				return LookupFormByPluginFormId(first.as<std::string_view>(),
+					a_args.get<sol::object>(1).as<std::string_view>());
 			}
 			return LookupFormByEditorId(first.as<std::string_view>());
 		}

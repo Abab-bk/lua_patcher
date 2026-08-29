@@ -34,25 +34,28 @@ namespace
 						// The fill data is a union; only the field matching the
 						// alias's fill type is valid.
 						switch (alias->fillType.get()) {
-						case RE::BGSBaseAlias::FILL_TYPE::kForced: {
-							const auto handle = refAlias->fillData.forced.forcedRef.native_handle();
-							if (handle != 0) {
-								protectedForms.insert(static_cast<RE::FormID>(handle >> 16));
+						case RE::BGSBaseAlias::FILL_TYPE::kForced:
+							{
+								const auto handle = refAlias->fillData.forced.forcedRef.native_handle();
+								if (handle != 0) {
+									protectedForms.insert(static_cast<RE::FormID>(handle >> 16));
+								}
+								break;
 							}
-							break;
-						}
-						case RE::BGSBaseAlias::FILL_TYPE::kCreated: {
-							if (auto* object = refAlias->fillData.created.object) {
-								protectedForms.insert(object->GetFormID());
+						case RE::BGSBaseAlias::FILL_TYPE::kCreated:
+							{
+								if (auto* object = refAlias->fillData.created.object) {
+									protectedForms.insert(object->GetFormID());
+								}
+								break;
 							}
-							break;
-						}
-						case RE::BGSBaseAlias::FILL_TYPE::kUniqueActor: {
-							if (auto* actor = refAlias->fillData.uniqueActor.uniqueActor) {
-								protectedForms.insert(actor->GetFormID());
+						case RE::BGSBaseAlias::FILL_TYPE::kUniqueActor:
+							{
+								if (auto* actor = refAlias->fillData.uniqueActor.uniqueActor) {
+									protectedForms.insert(actor->GetFormID());
+								}
+								break;
 							}
-							break;
-						}
 						default:
 							break;
 						}
@@ -67,15 +70,9 @@ namespace
 
 namespace LuaPatcher
 {
-	void BuildQuestProtection()
-	{
-		(void)QuestProtectionSet();
-	}
+	void BuildQuestProtection() { (void)QuestProtectionSet(); }
 
-	bool IsQuestReferenced(RE::TESForm* a_form)
-	{
-		return a_form && QuestProtectionSet().contains(a_form->GetFormID());
-	}
+	bool IsQuestReferenced(RE::TESForm* a_form) { return a_form && QuestProtectionSet().contains(a_form->GetFormID()); }
 
 	// Lua: lua_patcher.isQuestReferenced(formOrId) -> bool
 	bool IsQuestReferencedLua(sol::variadic_args a_args)

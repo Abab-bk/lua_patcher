@@ -12,6 +12,7 @@ Credits:
 
 - [CommonLibSSE-NG](https://github.com/alandtse/CommonLibVR/tree/ng)
 - [CommonLibSSE-NG-template](https://github.com/codepuncher/CommonLibSSE-NG-template)
+- [Mutagen](https://github.com/Mutagen-Modding/Mutagen)
 
 Example Mods:
 

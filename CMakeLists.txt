@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 project(
     LuaPatcher
-    VERSION 0.0.1
+    VERSION 0.1.0
     DESCRIPTION "An SKSE plugin for Skyrim SE/AE"
     LANGUAGES CXX)
 

@@ -41,7 +41,7 @@ jobs:
 
       - name: xwin splat
         if: steps.xwin-cache.outputs.cache-hit != 'true'
-        run: xwin splat --output ~/.xwin
+        run: xwin --accept-license splat --output ~/.xwin
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4

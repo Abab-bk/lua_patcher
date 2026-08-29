@@ -13,6 +13,11 @@ Credits:
 - [CommonLibSSE-NG](https://github.com/alandtse/CommonLibVR/tree/ng)
 - [CommonLibSSE-NG-template](https://github.com/codepuncher/CommonLibSSE-NG-template)
 
+Example Mods:
+
+- [EverythingRandomizer](examples/EverythingRandomizer/README.md)
+- [GearInjection](examples/GearInjection/README.md)
+
 ## Docs
 
 - [API Reference](docs/API.md)

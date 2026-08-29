@@ -41,3 +41,8 @@ Similar to the previous question, it's hard to say. If
 `EverythingRandomizer_protection.lua` is generated correctly, it should be
 _okay_. But the main issue remains the scripts. When playing with my own
 modlist, it was stable most of the time.
+
+> Work for items added by other mods?
+
+Yes. You might also want [GearInjection](../GearInjection/README.md) to add
+items from other mods into the loot tables.

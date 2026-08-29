@@ -1,10 +1,24 @@
 EverythingRandomizer can randomize many things:
 
-- Loot table
-- potion/poison/food effect
-- enchantment effect
-- ingredient effect
-- ...
+- Loot tables (leveled items)
+- Enemy spawn lists (leveled characters, off by default)
+- Leveled spell lists
+- FormList contents (vendor stock, groups; smithing material sets stay intact)
+- Container contents (chests and lootable objects)
+- Ingredient effects
+- Potion / poison / food effects
+- Enchantment effects (off by default)
+- Shout effect
+- Gear enchantments (off by default)
+- Encounter zone difficulty
+- Crafting recipe outputs
+- Crafting recipe required materials (off by default)
+- Gear stats jitter (damage / armor rating / weight / value)
+- Magic cost jitter (spell cost / effect base cost; off by default)
+- Actor level / attribute jitter + skill shuffles (off by default)
+- Light radius / color / fade jitter (off by default)
+
+Quest-protected forms (see the protection section below) are never touched.
 
 Modify the configuration via `EverythingRandomizer_config.lua`, which includes
 explanatory comments inside the file.

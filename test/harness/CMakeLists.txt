@@ -43,6 +43,7 @@ add_executable(
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/Shout.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/Light.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/EncounterZone.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/Crafting.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/Protection.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/ScriptLoader.cpp)
 

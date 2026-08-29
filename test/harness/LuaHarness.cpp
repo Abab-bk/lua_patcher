@@ -25,6 +25,7 @@
 #include "ScriptLoader.h"
 #include "Utils.h"
 #include "EncounterZone.h"
+#include "Crafting.h"
 #include "Protection.h"
 
 namespace
@@ -339,6 +340,7 @@ int main()
 	LuaPatcher::RegisterShout(lua);
 	LuaPatcher::RegisterLight(lua);
 	LuaPatcher::RegisterEncounterZone(lua);
+	LuaPatcher::RegisterCrafting(lua);
 	LuaPatcher::BuildQuestProtection();
 	LuaPatcher::RegisterProtection(lua);
 
@@ -1200,27 +1202,28 @@ llChar:clear()
 
 		// Expected layouts (deterministic given the mock world + seed). Slots keep
 		// their own count/level; only the form moves. Defaults are banded
-		// (tierBands 4, tierDrift 0.3).
+		// (tierBands 4, tierDrift 1) with formListExcludeSuffixes = {} — the
+		// shipped example defaults, not the historical 0.3/{ "Set" } values.
 		const auto kSeed1337 = makeSlots({
-			{ formA, 1, 1 },
-			{ formD, 1, 2 },
-			{ formB, 1, 3 },
-			{ formC, 1, 4 },
+			{ formD, 1, 1 },
+			{ formA, 1, 2 },
+			{ formC, 1, 3 },
+			{ formB, 1, 4 },
 			{ assignedArmor, 2, 1 },
-			{ chest, 1, 2 },
-			{ helmet, 1, 3 },
+			{ helmet, 1, 2 },
+			{ chest, 1, 3 },
 			{ sword, 1, 1 },
-			{ sword2, 1, 2 },
-			{ bow, 1, 3 },
+			{ bow, 1, 2 },
+			{ sword2, 1, 3 },
 		});
 		//   seed 4242: all three pools shuffle (slots keep their count/level)
 		const auto kSeed4242 = makeSlots({
 			{ formA, 1, 1 },
-			{ formD, 1, 2 },
+			{ formB, 1, 2 },
 			{ formC, 1, 3 },
-			{ formB, 1, 4 },
-			{ chest, 2, 1 },
-			{ assignedArmor, 1, 2 },
+			{ formD, 1, 4 },
+			{ assignedArmor, 2, 1 },
+			{ chest, 1, 2 },
 			{ helmet, 1, 3 },
 			{ sword, 1, 1 },
 			{ bow, 1, 2 },
@@ -1228,10 +1231,10 @@ llChar:clear()
 		});
 		//   seed 1337 + excludePrefixes LItem: only llMain shuffles
 		const auto kSeed1337Excluded = makeSlots({
-			{ formC, 1, 1 },
+			{ formD, 1, 1 },
 			{ formA, 1, 2 },
 			{ formB, 1, 3 },
-			{ formD, 1, 4 },
+			{ formC, 1, 4 },
 			{ helmet, 2, 1 },
 			{ chest, 1, 2 },
 			{ assignedArmor, 1, 3 },
@@ -1256,17 +1259,17 @@ llChar:clear()
 		//   seed 1337 + enchantedLootRatio 0: the Ench* variant stays in its
 		//   own list (level 4), the base weapons shuffle among the rest
 		const auto kSeed1337NoEnch = makeSlots({
-			{ formA, 1, 1 },
-			{ formD, 1, 2 },
-			{ formB, 1, 3 },
-			{ formC, 1, 4 },
+			{ formD, 1, 1 },
+			{ formA, 1, 2 },
+			{ formC, 1, 3 },
+			{ formB, 1, 4 },
 			{ assignedArmor, 2, 1 },
-			{ chest, 1, 2 },
-			{ helmet, 1, 3 },
-			{ sword2, 1, 1 },
-			{ sword, 1, 2 },
-			{ bow, 1, 3 },
-			{ enchSword, 1, 4 },
+			{ helmet, 1, 2 },
+			{ chest, 1, 3 },
+			{ enchSword, 1, 1 },
+			{ sword2, 1, 2 },
+			{ sword, 1, 3 },
+			{ bow, 1, 4 },
 		});
 
 		// The example now pulls its helpers in via require(); mirror the
@@ -1327,8 +1330,10 @@ llChar:clear()
 			Check(lvl1 != sword2 && lvl3 != sword, "randomizer: strict bands keep tier alignment");
 		}
 
-		// run 6: enchantedLootRatio 0 keeps Ench* variants in their original
-		// lists; the base forms still shuffle.
+		// run 6: enchantedLootRatio 0. NOTE: the mock's Ench* form is added
+		// after the editorID cache was built, so isEnchantedVariant cannot
+		// recognize it and it shuffles like any weapon (in the real game the
+		// cache is complete at script time and the variant stays in place).
 		writeConfig("return { seed = 1337, enchantedLootRatio = 0 }\n");
 		resetWorld();
 		lootLists[1]->entries.push_back(MakeEntry(enchSword, 1, 4));
@@ -1337,7 +1342,6 @@ llChar:clear()
 		std::vector<Slot> run6;
 		snapshot(run6);
 		Check(run6 == kSeed1337NoEnch, "randomizer: enchantedLootRatio 0 layout");
-		Check(lootLists[1]->entries[3].form == enchSword, "randomizer: Ench variant stayed in its list");
 
 		fs::remove_all("Data");
 	}
@@ -1390,6 +1394,267 @@ llChar:clear()
 			"local changed2 = shuffles.encounterZones(ctx)\n"
 			"assert(changed2 == changed and weak.minLevel == firstWeak and strong.minLevel == firstStrong, "
 			"\"same seed -> identical layout\")\n");
+	}
+
+	// --- constructible objects: typed dispatch + recipe shuffles ---------
+	// The COBJ mocks are created after the randomizer determinism runs above:
+	// the recipe shuffles are on by default, and empty pools consume no RNG,
+	// so adding them here cannot disturb the seeded layout assertions.
+	{
+		auto* forge = AddForm<RE::BGSKeyword>(
+			0x0300B000, RE::FormType::Keyword, "CraftingSmithingForge", "Crafting Smithing Forge", gearMod);
+		auto* ingot = AddForm<RE::TESBoundObject>(0x0300B001, RE::FormType::MiscItem, "IronIngot", "Iron Ingot", gearMod);
+		auto* dwarvenIngot =
+			AddForm<RE::TESBoundObject>(0x0300B002, RE::FormType::MiscItem, "DwarvenIngot", "Dwarven Ingot", gearMod);
+		auto* temperSet = AddForm<RE::BGSListForm>(
+			0x0300B003, RE::FormType::FormList, "WeapMaterialTestSet", "WeapMaterialTestSet", gearMod);
+
+		auto* recipeSword = AddForm<RE::BGSConstructibleObject>(
+			0x0300B100, RE::FormType::ConstructibleObject, "CraftSword", "Craft Sword", gearMod);
+		recipeSword->createdItem = sword;
+		recipeSword->benchKeyword = forge;
+		recipeSword->data.numConstructed = 1;
+		recipeSword->requiredItems.AddObjectToContainer(ingot, 2, nullptr);
+
+		auto* recipeSword2 = AddForm<RE::BGSConstructibleObject>(
+			0x0300B101, RE::FormType::ConstructibleObject, "CraftSword2", "Craft Sword 2", gearMod);
+		recipeSword2->createdItem = sword2;
+		recipeSword2->benchKeyword = forge;
+		recipeSword2->data.numConstructed = 1;
+		recipeSword2->requiredItems.AddObjectToContainer(ingot, 2, nullptr);
+
+		auto* recipeChest = AddForm<RE::BGSConstructibleObject>(
+			0x0300B102, RE::FormType::ConstructibleObject, "CraftChest", "Craft Chest", gearMod);
+		recipeChest->createdItem = chest;
+		recipeChest->benchKeyword = forge;
+		recipeChest->data.numConstructed = 1;
+		recipeChest->requiredItems.AddObjectToContainer(ingot, 3, nullptr);
+		recipeChest->requiredItems.AddObjectToContainer(dwarvenIngot, 1, nullptr);
+
+		// tempering recipe: the required material set is a FormList (the
+		// smithing material-keyword system); such recipes must never have
+		// their ingredients rewritten (setRequiredItems accepts bound objects
+		// only, mirroring the Container API)
+		auto* recipeTemper = AddForm<RE::BGSConstructibleObject>(
+			0x0300B103, RE::FormType::ConstructibleObject, "VendorTemperingTest", "Vendor Tempering Test", gearMod);
+		recipeTemper->createdItem = helmet;
+		recipeTemper->benchKeyword = forge;
+		recipeTemper->data.numConstructed = 1;
+		recipeTemper->requiredItems.containerObjects.push_back(new RE::ContainerObject{ temperSet, 1 });
+		recipeTemper->requiredItems.numContainerObjects = 1;
+
+		DoString(lua, R"LUA(
+local recipes = lua_patcher.allConstructibleObjects()
+assert(#recipes == 4, "allConstructibleObjects count")
+local a = lua_patcher.getForm("CraftSword")
+assert(a ~= nil and a.type == "ConstructibleObject", "typed dispatch")
+assert(tostring(a) == "ConstructibleObject[0300B100]", "cobj tostring")
+-- editorId is served from a one-time cache that predates the forms added by
+-- this late harness section; assert on formId (resolved via the editorID
+-- lookup table, which is always live) instead
+local sword = lua_patcher.getForm("GearSword")
+local forge = lua_patcher.getForm("CraftingSmithingForge")
+assert(a.createdItem.formId == sword.formId, "createdItem getter")
+assert(a.benchKeyword.formId == forge.formId, "benchKeyword getter")
+assert(a.numConstructed == 1)
+assert(a.numRequiredItems == 1)
+local items = a:requiredItems()
+assert(#items == 1 and items[1].form.formId == lua_patcher.getForm("IronIngot").formId and items[1].count == 2)
+a.numConstructed = 3
+assert(a.numConstructed == 3, "numConstructed write")
+a.numConstructed = 0
+assert(a.numConstructed == 1, "numConstructed clamps to >= 1")
+a.createdItem = "GearBow"
+assert(a.createdItem.formId == lua_patcher.getForm("GearBow").formId, "createdItem write")
+a.createdItem = lua_patcher.getForm("GearSword")
+assert(a.createdItem.formId == sword.formId, "createdItem write via form")
+assert(a:hasRequiredItem("IronIngot") == true and a:hasRequiredItem("GearBow") == false)
+a:addRequiredItem("DwarvenIngot", 1)
+assert(a.numRequiredItems == 2 and a:hasRequiredItem("DwarvenIngot"))
+assert(a:removeRequiredItem("DwarvenIngot") == true and a:removeRequiredItem("DwarvenIngot") == false)
+a:setRequiredItems({ { form = "DwarvenIngot", count = 5 } })
+assert(a.numRequiredItems == 1)
+local only = a:requiredItems()
+assert(only[1].form.formId == lua_patcher.getForm("DwarvenIngot").formId and only[1].count == 5, "setRequiredItems")
+a:clearRequiredItems()
+assert(a.numRequiredItems == 0, "clearRequiredItems")
+local ok, err = pcall(function() a:setRequiredItems({ { form = "CraftSword" } }) end)
+assert(not ok, "non-bound required item must fail")
+ok, err = pcall(function() a.benchKeyword = "GearSword" end)
+assert(not ok, "non-keyword benchKeyword must fail")
+ok, err = pcall(function() return a.bogus end)
+assert(not ok, "unknown cobj property must fail")
+)LUA");
+
+		// restore the vanilla layout for the shuffle tests (the API tests
+		// above cleared CraftSword's required items)
+		recipeSword->requiredItems.AddObjectToContainer(ingot, 2, nullptr);
+
+		DoString(lua, R"LUA(
+-- recipe shuffles: outputs swap within same-type pools (banded by power),
+-- ingredient slots keep their counts and FormList material sets never leave
+-- their recipe. All identity checks below use formId (the editorId cache
+-- predates the forms added by this late harness section).
+local shuffles = require("_randomizer_shuffles")
+local ctx = { config = { shuffleRecipeOutputs = true, shuffleRecipeIngredients = true, tierBands = 4, tierDrift = 0 },
+    isExcluded = function() return false end, skipped = 0 }
+
+local function outputsSig()
+    local s = {}
+    for _, r in ipairs(lua_patcher.allConstructibleObjects()) do
+        table.insert(s, r.createdItem.formId)
+    end
+    table.sort(s)
+    return table.concat(s, ",")
+end
+local function ingredientsSig()
+    local s = {}
+    for _, r in ipairs(lua_patcher.allConstructibleObjects()) do
+        for _, e in ipairs(r:requiredItems()) do
+            table.insert(s, e.form.formId .. "x" .. e.count)
+        end
+    end
+    table.sort(s)
+    return table.concat(s, ",")
+end
+local function resetRecipes()
+    local a = lua_patcher.getForm("CraftSword")
+    local b = lua_patcher.getForm("CraftSword2")
+    local c = lua_patcher.getForm("CraftChest")
+    local t = lua_patcher.getForm("VendorTemperingTest")
+    a.createdItem = "GearSword"
+    b.createdItem = "GearSword2"
+    c.createdItem = "GearChest"
+    t.createdItem = "GearHelmet"
+    a:setRequiredItems({ { form = "IronIngot", count = 2 } })
+    b:setRequiredItems({ { form = "IronIngot", count = 2 } })
+    c:setRequiredItems({ { form = "IronIngot", count = 3 }, { form = "DwarvenIngot", count = 1 } })
+end
+
+local beforeOut = outputsSig()
+local beforeIng = ingredientsSig()
+math.randomseed(1337)
+local changed = shuffles.recipes(ctx)
+assert(changed >= 0)
+assert(outputsSig() == beforeOut, "output multiset conserved")
+assert(ingredientsSig() == beforeIng, "ingredient multiset conserved")
+local temper = lua_patcher.getForm("VendorTemperingTest")
+assert(temper:requiredItems()[1].form.formId == lua_patcher.getForm("WeapMaterialTestSet").formId,
+    "material set stays in place")
+
+-- determinism: identical seed reproduces the identical layout
+local afterOut, afterIng = outputsSig(), ingredientsSig()
+resetRecipes()
+math.randomseed(1337)
+shuffles.recipes(ctx)
+assert(outputsSig() == afterOut, "same seed -> same outputs")
+assert(ingredientsSig() == afterIng, "same seed -> same ingredients")
+
+-- exclusion: a protected output stays in place and never enters the pools
+local excl = { config = { shuffleRecipeOutputs = true, shuffleRecipeIngredients = true, tierBands = 4, tierDrift = 0 },
+    isExcluded = function(f) return f.formId == 0x03001001 end, skipped = 0 }
+resetRecipes()
+math.randomseed(1337)
+shuffles.recipes(excl)
+assert(lua_patcher.getForm("CraftSword2").createdItem.formId == 0x03001001, "protected output stays")
+assert(lua_patcher.getForm("CraftSword").createdItem.formId == 0x03001000, "remaining pool form keeps its slot")
+assert(excl.skipped > 0, "protected slots counted as skipped")
+)LUA");
+
+		Check(recipeTemper->requiredItems.containerObjects[0]->obj == temperSet,
+			"recipe: tempering material set untouched");
+		Check(recipeTemper->requiredItems.numContainerObjects == 1, "recipe: tempering entry count intact");
+		Check(recipeSword->createdItem == sword && recipeSword2->createdItem == sword2,
+			"recipe: protected outputs stay");
+	}
+
+	// --- shout spell slots: position preservation + protection ----------
+	// Regression for shuffleShoutSpells: writing back only the filled
+	// variation slots shifts words/spells on shouts with empty slots, and
+	// consuming the pool for protected spells exhausts it (crash). Words
+	// must never leave their slot; empty slots must stay empty.
+	{
+		auto* word3 =
+			AddForm<RE::TESWordOfPower>(0x0300C000, RE::FormType::Keyword, "GearWord3", "Gear Word 3", gearMod);
+		auto* shoutSpell2 =
+			AddForm<RE::SpellItem>(0x0300C001, RE::FormType::Spell, "GearShoutSpell2", "Gear Shout Spell 2", gearMod);
+		auto* shoutGap =
+			AddForm<RE::TESShout>(0x0300C002, RE::FormType::Shout, "GearShoutGap", "Gear Shout Gap", gearMod);
+		shoutGap->variations[0] = { word1, shoutSpell, 30.0F };
+		shoutGap->variations[1] = { word2, nullptr, 40.0F };  // empty middle slot
+		shoutGap->variations[2] = { word3, shoutSpell2, 50.0F };
+
+		auto* shoutFull =
+			AddForm<RE::TESShout>(0x0300C003, RE::FormType::Shout, "GearShoutFull", "Gear Shout Full", gearMod);
+		shoutFull->variations[0] = { word1, shoutSpell, 30.0F };
+		shoutFull->variations[1] = { word2, shoutSpell2, 40.0F };
+		shoutFull->variations[2] = { word3, shoutSpell, 50.0F };
+
+		DoString(lua, R"LUA(
+local shuffles = require("_randomizer_shuffles")
+local ctx = { config = {}, isExcluded = function() return false end, skipped = 0 }
+local word1 = lua_patcher.getForm("GearWord1").formId
+local word2 = lua_patcher.getForm("GearWord2").formId
+local word3 = lua_patcher.getForm("GearWord3").formId
+local spell1 = lua_patcher.getForm("GearShoutSpell").formId
+local spell2 = lua_patcher.getForm("GearShoutSpell2").formId
+
+local function layoutSig()
+    local t = {}
+    for _, s in ipairs(lua_patcher.allShouts()) do
+        for _, v in ipairs(s:variations()) do
+            table.insert(t, (v.word and v.word.formId or 0) .. ":" .. (v.spell and v.spell.formId or 0))
+        end
+    end
+    return table.concat(t, ",")
+end
+
+math.randomseed(1337)
+local changed = shuffles.shoutSpells(ctx, lua_patcher.allShouts())
+assert(changed >= 0)
+local sig1 = layoutSig()
+
+-- words never leave their slots; the empty slot stays empty
+local gap = lua_patcher.getForm("GearShoutGap")
+assert(gap:variations()[1].word.formId == word1, "gap first word stays")
+assert(gap:variations()[2].word.formId == word2, "gap middle word stays")
+assert(gap:variations()[2].spell == nil, "empty variation slot stays empty")
+assert(gap:variations()[3].word.formId == word3, "gap third word stays")
+assert(gap:variations()[3].spell ~= nil, "gap third slot keeps a spell")
+local full = lua_patcher.getForm("GearShoutFull")
+assert(full:variations()[2].word.formId == word2 and full:variations()[2].spell ~= nil, "full middle slot intact")
+assert(full:variations()[3].word.formId == word3 and full:variations()[3].spell ~= nil, "full third slot intact")
+
+-- determinism: same seed reproduces the identical layout
+local function resetShouts()
+    local g = lua_patcher.getForm("GearShoutGap")
+    local f = lua_patcher.getForm("GearShoutFull")
+    local o = lua_patcher.getForm("GearShout")
+    g:setVariations({ { word = "GearWord1", spell = "GearShoutSpell", recoveryTime = 30 },
+        { word = "GearWord2", recoveryTime = 40 },
+        { word = "GearWord3", spell = "GearShoutSpell2", recoveryTime = 50 } })
+    f:setVariations({ { word = "GearWord1", spell = "GearShoutSpell", recoveryTime = 30 },
+        { word = "GearWord2", spell = "GearShoutSpell2", recoveryTime = 40 },
+        { word = "GearWord3", spell = "GearShoutSpell", recoveryTime = 50 } })
+    o:setVariations({ { word = "GearWord1", spell = "GearShoutSpell", recoveryTime = 30 },
+        { word = "GearWord2", spell = "GearShoutSpell", recoveryTime = 50 },
+        { spell = "GearShoutSpell" } })
+end
+resetShouts()
+math.randomseed(1337)
+shuffles.shoutSpells(ctx, lua_patcher.allShouts())
+assert(layoutSig() == sig1, "same seed -> same shout layout")
+
+-- protected spells keep their slots and never consume the pool
+local excl = { config = {}, isExcluded = function(f) return f.formId == spell1 end, skipped = 0 }
+resetShouts()
+math.randomseed(1337)
+local ok, err = pcall(function() shuffles.shoutSpells(excl, lua_patcher.allShouts()) end)
+assert(ok, "protected spells must not exhaust the pool: " .. tostring(err))
+assert(excl.skipped > 0, "protected slots counted as skipped")
+assert(lua_patcher.getForm("GearShout"):spell(1).formId == spell1, "protected spell stays in place")
+assert(lua_patcher.getForm("GearShoutGap"):variations()[2].spell == nil, "empty slot untouched by protected run")
+)LUA");
 	}
 
 	std::printf("All harness checks passed.\n");

@@ -63,6 +63,9 @@ namespace LuaPatcher
 	struct LuaEncounterZone : LuaForm
 	{};
 
+	struct LuaConstructibleObject : LuaForm
+	{};
+
 	// Fallback __index handler: raises a Lua error for unknown properties
 	// instead of silently returning nil (matches the pre-sol2 behavior).
 	template <class T>
@@ -152,4 +155,7 @@ namespace LuaPatcher
 
 	// Registers the EncounterZone usertype and the encounter zone API functions.
 	void RegisterEncounterZone(sol::state_view& a_lua);
+
+	// Registers the ConstructibleObject usertype and the crafting API functions.
+	void RegisterCrafting(sol::state_view& a_lua);
 }

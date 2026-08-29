@@ -1,48 +1,18 @@
 #include "LuaApi.h"
 
+#include "ContainerOps.h"
+
 #include <RE/T/TESContainer.h>
 #include <RE/T/TESObjectCONT.h>
 
 #include <cstdint>
 #include <string>
-#include <vector>
 
 namespace
 {
 	RE::TESContainer* ToContainer(const LuaPatcher::LuaContainer& a_form)
 	{
 		return a_form.form->As<RE::TESContainer>();
-	}
-
-	RE::TESBoundObject* CheckBoundObject(RE::TESForm* a_form)
-	{
-		auto* bound = a_form->As<RE::TESBoundObject>();
-		if (!bound) {
-			throw sol::error{ "expected a bound object (item) form" };
-		}
-		return bound;
-	}
-
-	// Pushes an entry snapshot table { form, count }.
-	sol::table PushEntry(sol::state_view a_lua, const RE::ContainerObject& a_entry)
-	{
-		sol::table row = a_lua.create_table(0, 2);
-		row["form"] = LuaPatcher::PushForm(a_lua, a_entry.obj);
-		row["count"] = a_entry.count;
-		return row;
-	}
-
-	// Removes every entry of a_form (the engine API only deletes entries whose
-	// count matches exactly, so remove one-by-one with each entry's own count).
-	void RemoveAllOf(RE::TESContainer* a_container, RE::TESBoundObject* a_form)
-	{
-		for (std::uint32_t i = 0; i < a_container->numContainerObjects; ++i) {
-			if (const auto entry = a_container->containerObjects[i]; entry && entry->obj == a_form) {
-				a_container->RemoveObjectFromContainer(a_form, entry->count);
-				// entry is gone; the next entry shifts into this index
-				--i;
-			}
-		}
 	}
 
 	sol::object AllContainers(sol::this_state a_state)
@@ -85,7 +55,7 @@ namespace LuaPatcher
 			lua_Integer index = 1;
 			for (std::uint32_t i = 0; i < container->numContainerObjects; ++i) {
 				if (const auto entry = container->containerObjects[i]) {
-					result[index++] = PushEntry(lua, *entry);
+					result[index++] = ContainerOps::PushEntry(lua, *entry);
 				}
 			}
 			return result;
@@ -93,54 +63,13 @@ namespace LuaPatcher
 
 		type["setContents"] = [](LuaContainer& a_form, const sol::object& a_list) {
 			auto* container = ToContainer(a_form);
-			if (!a_list.is<sol::table>()) {
-				throw sol::error{ "expected an array of { form, count } entries" };
-			}
-			const auto rows = a_list.as<sol::table>();
-
-			// Validate every entry first so a bad table cannot leave the
-			// container half-mutated.
-			std::vector<std::pair<RE::TESBoundObject*, std::int32_t>> planned;
-			planned.reserve(rows.size());
-			for (std::size_t i = 1; i <= rows.size(); ++i) {
-				const sol::object row = rows.get<sol::object>(static_cast<lua_Integer>(i));
-				if (!row.is<sol::table>()) {
-					throw sol::error{ "expected { form = formOrId, count = n } entry tables" };
-				}
-				const auto entry = row.as<sol::table>();
-				const auto form = entry.get<sol::optional<sol::object>>("form");
-				const auto count = entry.get<sol::optional<sol::object>>("count");
-				if (!form) {
-					throw sol::error{ "missing 'form' in container entry" };
-				}
-				lua_Integer n = 1;
-				if (count) {
-					if (!count->is<double>()) {
-						throw sol::error{ "bad container entry value 'count' (expected a number)" };
-					}
-					n = static_cast<lua_Integer>(count->as<double>());
-				}
-				planned.emplace_back(CheckBoundObject(LuaPatcher::CheckFormValue(*form)), static_cast<std::int32_t>(n));
-			}
-
-			std::vector<RE::TESBoundObject*> removeOrder;
-			for (std::uint32_t i = 0; i < container->numContainerObjects; ++i) {
-				if (const auto entry = container->containerObjects[i]) {
-					removeOrder.push_back(entry->obj);
-				}
-			}
-			for (auto* form : removeOrder) {
-				RemoveAllOf(container, form);
-			}
-			for (const auto& [form, count] : planned) {
-				container->AddObjectToContainer(form, count, nullptr);
-			}
+			ContainerOps::ReplaceContents(container, ContainerOps::ParseEntries(a_list));
 		};
 
 		type["addItem"] = [](LuaContainer& a_form, sol::variadic_args a_args) {
 			auto* container = ToContainer(a_form);
 			const auto ref = LuaPatcher::ParseFormRef(a_args, "addItem");
-			auto* bound = CheckBoundObject(ref.form);
+			auto* bound = ContainerOps::CheckBoundObject(ref.form);
 
 			lua_Integer count = 1;
 			if (a_args.size() > ref.consumed && !a_args.get<sol::object>(ref.consumed).is<sol::nil_t>()) {
@@ -157,9 +86,9 @@ namespace LuaPatcher
 
 		type["removeItem"] = [](LuaContainer& a_form, sol::variadic_args a_args) {
 			auto* container = ToContainer(a_form);
-			auto* bound = CheckBoundObject(LuaPatcher::ParseFormRef(a_args, "removeItem").form);
+			auto* bound = ContainerOps::CheckBoundObject(LuaPatcher::ParseFormRef(a_args, "removeItem").form);
 			const auto before = container->numContainerObjects;
-			RemoveAllOf(container, bound);
+			ContainerOps::RemoveAllOf(container, bound);
 			return container->numContainerObjects != before;
 		};
 
@@ -176,14 +105,8 @@ namespace LuaPatcher
 
 		type["clearContents"] = [](LuaContainer& a_form) {
 			auto* container = ToContainer(a_form);
-			std::vector<RE::TESBoundObject*> removeOrder;
-			for (std::uint32_t i = 0; i < container->numContainerObjects; ++i) {
-				if (const auto entry = container->containerObjects[i]) {
-					removeOrder.push_back(entry->obj);
-				}
-			}
-			for (auto* form : removeOrder) {
-				RemoveAllOf(container, form);
+			for (auto* form : ContainerOps::SnapshotForms(container)) {
+				ContainerOps::RemoveAllOf(container, form);
 			}
 		};
 

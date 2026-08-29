@@ -28,6 +28,7 @@ namespace RE
 		Container = 28,
 		Ingredient = 30,
 		Light = 31,
+		MiscItem = 32,
 		FormList = 40,
 		Weapon = 41,
 		NPC = 43,
@@ -38,6 +39,7 @@ namespace RE
 		LeveledSpell = 51,
 		LeveledNPC = 52,
 		EncounterZone = 67,
+		ConstructibleObject = 69,  // real value 49 is taken by mock LeveledItem
 		Shout = 119,
 	};
 
@@ -70,6 +72,8 @@ namespace RE
 			return "FormList";
 		case FormType::Ingredient:
 			return "Ingredient";
+		case FormType::MiscItem:
+			return "Misc";
 		case FormType::AlchemyItem:
 			return "Potion";
 		case FormType::Container:
@@ -82,6 +86,8 @@ namespace RE
 			return "Shout";
 		case FormType::EncounterZone:
 			return "EncounterZone";
+		case FormType::ConstructibleObject:
+			return "ConstructibleObject";
 		default:
 			return "Unknown";
 		}
@@ -744,12 +750,15 @@ namespace RE
 	class TESLevSpell : public TESBoundObject, public TESLeveledList
 	{};
 
-	// Mirrors RE::TESContainer (component of TESObjectCONT): heap-allocated
-	// ContainerObject entries with no set-size API, so mutations go through the
-	// engine's Add/RemoveObjectTo/FromContainer methods.
+	// Mirrors RE::TESContainer (component of TESObjectCONT, member of
+	// BGSConstructibleObject): heap-allocated ContainerObject entries with no
+	// set-size API, so mutations go through the engine's
+	// Add/RemoveObjectTo/FromContainer methods. Entries are stored as
+	// TESForm*: recipe required items may reference non-bound forms (e.g. the
+	// FormList material sets tempering recipes use), which the engine accepts.
 	struct ContainerObject
 	{
-		TESBoundObject* obj = nullptr;
+		TESForm* obj = nullptr;
 		std::int32_t count = 0;
 	};
 
@@ -803,6 +812,24 @@ namespace RE
 
 	class TESObjectCONT : public TESForm, public TESContainer
 	{};
+
+	// Mirrors RE::BGSConstructibleObject (COBJ crafting recipes): the required
+	// items live in the embedded TESContainer, the output in createdItem
+	// (CNAM), the crafting-station keyword in benchKeyword (BNAM) and the
+	// produced count in data.numConstructed (NAM1).
+	class BGSConstructibleObject : public TESForm
+	{
+	public:
+		struct Data
+		{
+			std::uint16_t numConstructed = 0;  // 0 - NAM1
+		};
+
+		TESContainer requiredItems;    // 20
+		TESForm* createdItem = nullptr;      // 40 - CNAM
+		BGSKeyword* benchKeyword = nullptr;  // 48 - BNAM
+		Data data;                           // 50
+	};
 
 	// Mirrors RE::TESRaceForm (component of TESNPC).
 	class TESRaceForm : public BaseFormComponent

@@ -95,6 +95,7 @@ else()
         src/Shout.cpp
         src/Light.cpp
         src/EncounterZone.cpp
+        src/Crafting.cpp
         src/Protection.cpp
         "${CMAKE_CURRENT_BINARY_DIR}/src/version.rc"
         USE_ADDRESS_LIBRARY)

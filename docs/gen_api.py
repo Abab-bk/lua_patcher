@@ -36,6 +36,7 @@ TYPE_ORDER = [
     "Ingredient",
     "Potion",
     "Container",
+    "ConstructibleObject",
     "Actor",
     "Shout",
     "Light",
@@ -55,6 +56,7 @@ RECEIVERS = {
     "Ingredient": "ingredient",
     "Potion": "potion",
     "Container": "container",
+    "ConstructibleObject": "recipe",
     "Actor": "actor",
     "Shout": "shout",
     "Light": "light",
@@ -89,6 +91,7 @@ MODULE_NOTES = {
     "allShouts": "Every `TESShout`",
     "allLights": "Every `TESObjectLIGH`",
     "allEncounterZones": "Every `BGSEncounterZone` (ENCOUNTER_ZONE records)",
+    "allConstructibleObjects": "Every `BGSConstructibleObject` (COBJ crafting recipes)",
     "findLeveledListsContaining": "Snapshot reverse index: lists referencing the form in the game's pristine data (patches made this run are not visible)",
     "formList": "Raises if the form is not a form list",
     "allFormLists": "Every `BGSListForm`",
@@ -128,6 +131,12 @@ METHOD_ARGS = {
     "Container.addItem": "formRef, count?",
     "Container.removeItem": "formRef",
     "Container.has": "formRef",
+    "ConstructibleObject.requiredItems": "",
+    "ConstructibleObject.setRequiredItems": "entries",
+    "ConstructibleObject.addRequiredItem": "formRef, count?",
+    "ConstructibleObject.removeRequiredItem": "formRef",
+    "ConstructibleObject.hasRequiredItem": "formRef",
+    "ConstructibleObject.clearRequiredItems": "",
     "Ingredient.addEffect": "baseRef, options?",
     "Potion.addEffect": "baseRef, options?",
     "Enchantment.addEffect": "baseRef, options?",
@@ -156,6 +165,7 @@ MODULE_RETURNS = {
     "allShouts": "array of Shout",
     "allLights": "array of Light",
     "allEncounterZones": "array of EncounterZone",
+    "allConstructibleObjects": "array of ConstructibleObject",
     "findLeveledListsContaining": "array of LeveledList",
     "formList": "FormList",
     "allFormLists": "array of FormList",
@@ -199,6 +209,9 @@ METHOD_RETURNS = {
     "FormList.remove": "bool",
     "FormList.has": "bool",
     "FormList.forms": "array of Form",
+    "ConstructibleObject.requiredItems": "array of { form, count }",
+    "ConstructibleObject.removeRequiredItem": "bool",
+    "ConstructibleObject.hasRequiredItem": "bool",
 }
 
 # Hand-maintained notes for individual properties/methods (per type).
@@ -255,6 +268,16 @@ MEMBER_NOTES = {
     "Container.setContents": "Replaces all contents",
     "Container.addItem": "Appends or accumulates the count",
     "Container.removeItem": "Removes every entry of the form",
+    "ConstructibleObject.createdItem": "The output item (CNAM); nil on a malformed recipe",
+    "ConstructibleObject.benchKeyword": "The crafting-station keyword (BNAM)",
+    "ConstructibleObject.numConstructed": "Output count per craft (NAM1); clamped to >= 1",
+    "ConstructibleObject.numRequiredItems": "Entry count",
+    "ConstructibleObject.requiredItems": "Entry snapshots `{ form, count }`",
+    "ConstructibleObject.setRequiredItems": "Replaces all required items",
+    "ConstructibleObject.addRequiredItem": "Appends or accumulates the count",
+    "ConstructibleObject.removeRequiredItem": "Removes every entry of the form",
+    "ConstructibleObject.hasRequiredItem": "Checks the form",
+    "ConstructibleObject.clearRequiredItems": "Removes every entry",
 }
 
 # Extra prose injected after the LeveledList section.
@@ -537,6 +560,8 @@ def infer_type(getter: str, setter: str) -> str:
         return "number or nil"
     if "sol::optional<std::string>" in g:
         return "string or nil"
+    if "PushForm" in g:
+        return "Form"
     if "std::vector<LuaForm>" in g:
         return "array of Form"
     if "std::vector<std::string>" in g:
@@ -659,6 +684,7 @@ def main() -> int:
         SRC_DIR / "Shout.cpp",
         SRC_DIR / "Light.cpp",
         SRC_DIR / "EncounterZone.cpp",
+        SRC_DIR / "Crafting.cpp",
         SRC_DIR / "Protection.cpp",
     ]
     types: dict[str, dict] = {}
@@ -753,7 +779,7 @@ def main() -> int:
             lines.append("")
             lines.append(
                 "Weapon, Armor, LeveledList, Spell, MagicEffect, Enchantment, Ingredient, Potion, Container, "
-                "Actor, Shout, Light and Global objects inherit these."
+                "ConstructibleObject, Actor, Shout, Light and Global objects inherit these."
             )
             if t["tostring"]:
                 lines.append("")

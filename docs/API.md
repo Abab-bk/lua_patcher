@@ -38,13 +38,14 @@ name starts with `_` are modules: never executed directly, loaded with
 | `allShouts()` | array of Shout | Every `TESShout` |
 | `allLights()` | array of Light | Every `TESObjectLIGH` |
 | `allEncounterZones()` | array of EncounterZone | Every `BGSEncounterZone` (ENCOUNTER_ZONE records) |
+| `allConstructibleObjects()` | array of ConstructibleObject | Every `BGSConstructibleObject` (COBJ crafting recipes) |
 | `isQuestReferenced(formRef)` | bool | True when any loaded quest alias references the form (forced refs, created objects, unique actors); protects quest gear/NPCs from randomizers |
 | `print(...)` | — | Redirected to the plugin log (same formatting as log) |
 
 
 ## Form (base type)
 
-Weapon, Armor, LeveledList, Spell, MagicEffect, Enchantment, Ingredient, Potion, Container, Actor, Shout, Light and Global objects inherit these.
+Weapon, Armor, LeveledList, Spell, MagicEffect, Enchantment, Ingredient, Potion, Container, ConstructibleObject, Actor, Shout, Light and Global objects inherit these.
 
 `tostring(form)` → `"Form[{}\|{:08X}]"`
 
@@ -281,6 +282,26 @@ ll.chanceNone = 50
 | `container:removeItem(formRef)` | bool | |
 | `container:has(formRef)` | bool | |
 | `container:clearContents()` | — | |
+
+## ConstructibleObject (extends Form)
+
+`tostring(recipe)` → `"ConstructibleObject[{:08X}]"`
+
+| Property | R/W | Type | Notes |
+|---|---|---|---|
+| `createdItem` | rw | Form | The output item (CNAM); nil on a malformed recipe |
+| `benchKeyword` | rw | Form or nil | The crafting-station keyword (BNAM) |
+| `numConstructed` | rw | integer | Output count per craft (NAM1); clamped to >= 1 |
+| `numRequiredItems` | ro | integer | Entry count |
+
+| Method | Returns | Notes |
+|---|---|---|
+| `recipe:requiredItems()` | array of { form, count } | |
+| `recipe:setRequiredItems(entries)` | — | |
+| `recipe:addRequiredItem(formRef, count?)` | — | |
+| `recipe:removeRequiredItem(formRef)` | bool | |
+| `recipe:hasRequiredItem(formRef)` | bool | |
+| `recipe:clearRequiredItems()` | — | |
 
 ## Actor (extends Form)
 

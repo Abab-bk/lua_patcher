@@ -148,6 +148,7 @@ namespace LuaPatcher
 		RegisterShout(lua);
 		RegisterLight(lua);
 		RegisterEncounterZone(lua);
+		RegisterCrafting(lua);
 		BuildQuestProtection();
 		RegisterProtection(lua);
 
@@ -159,8 +160,7 @@ namespace LuaPatcher
 			// Scripts/_foo.lua (idempotent per folder across scripts).
 			if (script.has_parent_path()) {
 				const std::string modulePath = script.parent_path().generic_string() + "/?.lua";
-				const std::string pkgPath =
-					lua["package"]["path"].get<sol::optional<std::string>>().value_or("");
+				const std::string pkgPath = lua["package"]["path"].get<sol::optional<std::string>>().value_or("");
 				if (pkgPath.find(modulePath) == std::string::npos) {
 					lua["package"]["path"] = modulePath + ";" + pkgPath;
 				}

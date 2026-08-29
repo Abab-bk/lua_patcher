@@ -373,13 +373,18 @@ end
 
 -- Shout spell swap: every spell variation slot keeps its word/recoveryTime,
 -- the spell is pooled across all shouts and redistributed. Protected spells
--- stay out of the pool and protected slots keep their original spell.
+-- stay out of the pool and protected slots keep their original spell. Empty
+-- variation slots (shouts with fewer than three words) must also be written
+-- back in place: writing back only the filled slots would shift the words
+-- and spells of every later slot.
 local function shuffleShoutSpells(ctx, shouts)
     local pool = {}
     for _, s in ipairs(shouts) do
-        for _, v in ipairs(s:variations()) do
-            if v.spell and not ctx.isExcluded(v.spell) then
-                table.insert(pool, v.spell)
+        if not ctx.isExcluded(s) then
+            for _, v in ipairs(s:variations()) do
+                if v.spell and not ctx.isExcluded(v.spell) then
+                    table.insert(pool, v.spell)
+                end
             end
         end
     end
@@ -388,22 +393,29 @@ local function shuffleShoutSpells(ctx, shouts)
     local cursor = 0
     local changed = 0
     for _, s in ipairs(shouts) do
-        local assigned = {}
-        for _, v in ipairs(s:variations()) do
-            if v.spell then
-                if ctx.isExcluded(v.spell) then
-                    -- quest slot: keep the original spell, do not consume the pool
-                    ctx.skipped = ctx.skipped + 1
-                    table.insert(assigned, { word = v.word, spell = v.spell, recoveryTime = v.recoveryTime })
+        if ctx.isExcluded(s) then
+            ctx.skipped = ctx.skipped + 1
+        else
+            local assigned = {}
+            for _, v in ipairs(s:variations()) do
+                if v.spell then
+                    if ctx.isExcluded(v.spell) then
+                        -- quest slot: keep the original spell, do not consume the pool
+                        ctx.skipped = ctx.skipped + 1
+                        table.insert(assigned, { word = v.word, spell = v.spell, recoveryTime = v.recoveryTime })
+                    else
+                        cursor = cursor + 1
+                        local spell = pool[cursor]
+                        if spell.formId ~= v.spell.formId then changed = changed + 1 end
+                        table.insert(assigned, { word = v.word, spell = spell, recoveryTime = v.recoveryTime })
+                    end
                 else
-                    cursor = cursor + 1
-                    local spell = pool[cursor]
-                    if spell.formId ~= v.spell.formId then changed = changed + 1 end
-                    table.insert(assigned, { word = v.word, spell = spell, recoveryTime = v.recoveryTime })
+                    -- empty slot: keep it empty, preserve its position
+                    table.insert(assigned, { word = v.word, recoveryTime = v.recoveryTime })
                 end
             end
+            s:setVariations(assigned)
         end
-        s:setVariations(assigned)
     end
     return changed
 end
@@ -502,6 +514,146 @@ local function shuffleEncounterZones(ctx)
     return changed
 end
 
+-- True when a recipe's required items reference a FormList (the material
+-- sets tempering recipes use, e.g. WeapMaterialDaedricSet). The smithing
+-- material-keyword system depends on those sets, and the API cannot rewrite
+-- them (required items must be bound objects), so such recipes are left
+-- completely untouched by the ingredient shuffle.
+local function recipeHasMaterialSet(recipe)
+    for _, e in ipairs(recipe:requiredItems()) do
+        if e.form and e.form.type == "FormList" then
+            return true
+        end
+    end
+    return false
+end
+
+-- Crafting recipe (COBJ) output swap: every recipe keeps its slot, the
+-- createdItem is pooled within its own form type (weapons <-> weapons, armor
+-- <-> armor, potions <-> potions, ...) and redistributed banded by power, so
+-- a forge recipe still produces gear of a similar tier. The bench keyword is
+-- not constrained: an alchemy recipe may end up producing a weapon
+-- (Everything Randomizer). Protected recipes/outputs keep their original
+-- item and never consume their pools.
+local function shuffleRecipeOutputs(ctx)
+    local slotsByType = {}
+    local poolByType = {}
+    for _, r in ipairs(lua_patcher.allConstructibleObjects()) do
+        local out = r.createdItem
+        if out and not ctx.isExcluded(r) and not ctx.isExcluded(out) then
+            local t = out.type
+            slotsByType[t] = slotsByType[t] or {}
+            table.insert(slotsByType[t], { recipe = r, form = out })
+            poolByType[t] = poolByType[t] or {}
+            table.insert(poolByType[t], { form = out })
+        end
+    end
+    local poolKeys = {}
+    for t in pairs(poolByType) do
+        table.insert(poolKeys, t)
+    end
+    table.sort(poolKeys)
+
+    local changed = 0
+    for _, t in ipairs(poolKeys) do
+        local slots = slotsByType[t]
+        local pool = poolByType[t]
+        table.sort(slots, function(a, b)
+            return (util.formPower(a.form) or -1) < (util.formPower(b.form) or -1)
+        end)
+        table.sort(pool, function(a, b)
+            return (util.formPower(a.form) or -1) < (util.formPower(b.form) or -1)
+        end)
+
+        local assign = util.bandedPairing(#slots, ctx.config.tierBands, ctx.config.tierDrift)
+        for i, slot in ipairs(slots) do
+            local form = pool[assign[i]].form
+            if form.formId ~= slot.form.formId then
+                slot.recipe.createdItem = form
+                changed = changed + 1
+            end
+        end
+    end
+
+    -- protected output slots: keep the original item, count as skipped
+    for _, r in ipairs(lua_patcher.allConstructibleObjects()) do
+        if r.createdItem and (ctx.isExcluded(r) or ctx.isExcluded(r.createdItem)) then
+            ctx.skipped = ctx.skipped + 1
+        end
+    end
+    return changed
+end
+
+-- Crafting recipe (COBJ) ingredient swap: required-item slots keep their
+-- counts, the forms swap within same-type pools (like container contents).
+-- Recipes whose required items include a FormList (tempering material sets)
+-- are left untouched; protected forms stay out of the pools and their slots
+-- keep the original form.
+local function shuffleRecipeIngredients(ctx)
+    local pools = {}
+    for _, r in ipairs(lua_patcher.allConstructibleObjects()) do
+        if not ctx.isExcluded(r) and not recipeHasMaterialSet(r) then
+            for _, entry in ipairs(r:requiredItems()) do
+                if entry.form and not ctx.isExcluded(entry.form) then
+                    local t = entry.form.type
+                    pools[t] = pools[t] or {}
+                    table.insert(pools[t], entry.form)
+                end
+            end
+        end
+    end
+    local poolKeys = {}
+    for t in pairs(pools) do
+        table.insert(poolKeys, t)
+    end
+    table.sort(poolKeys)
+    for _, t in ipairs(poolKeys) do
+        util.fisherYates(pools[t])
+    end
+
+    local cursor = {}
+    local changed = 0
+    for _, r in ipairs(lua_patcher.allConstructibleObjects()) do
+        if ctx.isExcluded(r) or recipeHasMaterialSet(r) then
+            -- protected recipe or material-set recipe: ingredients stay put
+            ctx.skipped = ctx.skipped + #r:requiredItems()
+        else
+            local items = r:requiredItems()
+            local assigned = {}
+            for _, entry in ipairs(items) do
+                if ctx.isExcluded(entry.form) then
+                    -- quest slot: keep the original form, do not consume the pool
+                    ctx.skipped = ctx.skipped + 1
+                    table.insert(assigned, { form = entry.form, count = entry.count })
+                else
+                    local t = entry.form.type
+                    local pool = pools[t]
+                    local idx = (cursor[t] or 0) + 1
+                    cursor[t] = idx
+                    local form = pool and pool[idx] or entry.form
+                    if form.formId ~= entry.form.formId then changed = changed + 1 end
+                    table.insert(assigned, { form = form, count = entry.count })
+                end
+            end
+            r:setRequiredItems(assigned)
+        end
+    end
+    return changed
+end
+
+-- Combined recipe pass: outputs first, then ingredients (both gated by
+-- ctx.config). Call order fixes the RNG consumption order for determinism.
+local function shuffleRecipes(ctx)
+    local changed = 0
+    if ctx.config.shuffleRecipeOutputs then
+        changed = changed + shuffleRecipeOutputs(ctx)
+    end
+    if ctx.config.shuffleRecipeIngredients then
+        changed = changed + shuffleRecipeIngredients(ctx)
+    end
+    return changed
+end
+
 return {
     leveledEntries = shuffleLeveledEntries,
     formLists = shuffleFormLists,
@@ -511,4 +663,7 @@ return {
     shoutSpells = shuffleShoutSpells,
     gearEnchantments = shuffleGearEnchantments,
     encounterZones = shuffleEncounterZones,
+    recipeOutputs = shuffleRecipeOutputs,
+    recipeIngredients = shuffleRecipeIngredients,
+    recipes = shuffleRecipes,
 }

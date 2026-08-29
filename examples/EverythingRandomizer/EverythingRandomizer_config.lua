@@ -56,8 +56,8 @@ return {
     -- =====================================================================
     -- Leveled lists (drops / chests / vendors / NPC spawns / spell lists)
     shuffleLeveledItems = true,
-    shuffleLeveledCharacters = true, -- NPC spawn lists; Note: Weird, in some modlist, this will cause mobs to spawn *everywhere*, it's basically Skyrim GTA Edition
-    shuffleLeveledSpells = true,     -- spell leveled lists
+    shuffleLeveledCharacters = false, -- NPC spawn lists; Note: Weird, in some seed, this will cause mobs to spawn *everywhere*, it's basically Skyrim GTA Edition
+    shuffleLeveledSpells = true,      -- spell leveled lists
     -- FormList contents (vendor stock, groups, ...)
     shuffleFormLists = true,
     -- Container contents (chests / lootable objects); slots keep their count
@@ -73,6 +73,13 @@ return {
     -- levels with neighbors up to zoneSwapWindow tiers away)
     shuffleEncounterZones = true,
     zoneSwapWindow = 3,
+    -- Crafting recipes (COBJ): outputs swap within their own form type
+    -- (weapons <-> weapons, armor <-> armor, potions <-> potions, ...),
+    -- banded by power; tempering material sets never leave their recipes.
+    shuffleRecipeOutputs = true,
+    -- Recipe required items swap (slots keep their counts). Off by default:
+    -- with shuffled materials most recipes become hard to fulfill.
+    shuffleRecipeIngredients = false,
 
     -- =====================================================================
     -- Jitters — numeric wobble on top of the shuffles

@@ -15,6 +15,10 @@
 --     <-> armor-type; unenchanted gear stays unenchanted)
 --   * encounter zone difficulty swaps order-preservingly (each zone only
 --     trades levels with a neighbor within zoneSwapWindow difficulty tiers)
+--   * crafting recipe outputs swap within their own form type (banded by
+--     power); recipe ingredients can swap too (off by default — it makes
+--     recipes hard to fulfill); tempering material sets never leave
+--     their recipes
 --   * lights get radius/color/fade jitter; NPCs can get level/attribute
 --     jitter + skill shuffles (both off by default)
 --
@@ -58,50 +62,48 @@
 
 local CONFIG = {
     enabled = true,
+
     seed = 1337,
 
-    -- Filtering layers (see header): quest protection, built-in internal
-    -- filter, custom function, plus convenience prefix/suffix lists.
     useProtection = true,
     filterInternal = true,
+
     excludeForm = nil,
-    includePrefixes = {},                -- empty = every list; or restrict, e.g. { "LItem" }
-    excludePrefixes = {},                -- quest-list protection, e.g. { "LItemQuest" }
-    excludeSuffixes = {},                -- e.g. { "Unique" }
-    formListExcludeSuffixes = { "Set" }, -- keep smithing material sets sane
 
-    -- Difficulty: shuffled slots are paired with forms of a similar power rank
-    -- (weapon damage / armor rating). tierBands splits the power-ordered pool;
-    -- tierDrift widens the pairing window (0 = strict bands, 1 = full chaos).
-    -- enchantedLootRatio caps the Ench* variants that join the loot pools
-    -- (1.0 = vanilla pool, 0 = enchanted loot stays where vanilla put it).
+    includePrefixes = {},
+    excludePrefixes = {},
+    excludeSuffixes = {},
+
+    formListExcludeSuffixes = {},
+
     tierBands = 4,
-    tierDrift = 0.3,
-    enchantedLootRatio = 1.0,
+    tierDrift = 1,
+    enchantedLootRatio = 0.5,
 
-    -- Shuffles
     shuffleLeveledItems = true,
-    shuffleLeveledCharacters = false, -- NPC spawn lists (quest-hostile)
-    shuffleLeveledSpells = true,      -- spell leveled lists
+    shuffleLeveledCharacters = false,
+    shuffleLeveledSpells = true,
     shuffleFormLists = true,
-    shuffleContainers = true,         -- chest/lootable contents swap, same-type pools
-    shuffleIngredients = true,        -- ingredient effect slots swap
-    shufflePotions = true,            -- potion/poison/food effect slots swap
-    shuffleEnchantments = true,       -- enchantment effect slots swap
-    shuffleShouts = true,             -- shout spell variations swap
-    shuffleGearEnchantments = true,   -- enchantments swap between gear (per type)
-    shuffleEncounterZones = true,     -- zone difficulty swaps within a neighbor window
-    zoneSwapWindow = 3,               -- how many difficulty tiers apart zones may swap
+    shuffleContainers = true,
+    shuffleIngredients = true,
+    shufflePotions = true,
+    shuffleEnchantments = false,
+    shuffleShouts = true,
+    shuffleGearEnchantments = false,
+    shuffleEncounterZones = true,
+    zoneSwapWindow = 3,
 
-    -- Jitters
+    shuffleRecipeOutputs = true,
+    shuffleRecipeIngredients = false,
+
     randomizeStats = true,
-    statJitter = 0.2, -- +/-20% per stat
+    statJitter = 0.2,
     skipEnchanted = true,
     randomizeMagic = false,
     magicJitter = 0.2,
-    randomizeActors = false, -- level/attribute jitter + skill shuffle (chaotic)
+    randomizeActors = false,
     actorJitter = 0.2,
-    randomizeLights = true,  -- radius / color / fade
+    randomizeLights = false,
     lightJitter = 0.3,
 }
 
@@ -341,19 +343,22 @@ if CONFIG.shuffleContainers then
     containerChanges = shuffles.containerContents(ctx, containers)
 end
 
-local effectChanges = 0
+local ingredientChanges = 0
+local potionChanges = 0
+local enchantmentChanges = 0
+local shoutChanges = 0
 
 if CONFIG.shuffleIngredients then
-    effectChanges = effectChanges + shuffles.effectSlots(ctx, lua_patcher.allIngredients())
+    ingredientChanges = ingredientChanges + shuffles.effectSlots(ctx, lua_patcher.allIngredients())
 end
 if CONFIG.shufflePotions then
-    effectChanges = effectChanges + shuffles.effectSlots(ctx, lua_patcher.allPotions())
+    potionChanges = potionChanges + shuffles.effectSlots(ctx, lua_patcher.allPotions())
 end
 if CONFIG.shuffleEnchantments then
-    effectChanges = effectChanges + shuffles.effectSlots(ctx, lua_patcher.allEnchantments())
+    enchantmentChanges = enchantmentChanges + shuffles.effectSlots(ctx, lua_patcher.allEnchantments())
 end
 if CONFIG.shuffleShouts then
-    effectChanges = effectChanges + shuffles.shoutSpells(ctx, lua_patcher.allShouts())
+    shoutChanges = shoutChanges + shuffles.shoutSpells(ctx, lua_patcher.allShouts())
 end
 
 local statChanges = 0
@@ -386,7 +391,47 @@ if CONFIG.shuffleEncounterZones then
     zoneChanges = shuffles.encounterZones(ctx)
 end
 
-print(string.format(
-    "EverythingRandomizer: seed=%d lists=%d swappedSlots=%d containers=%d effects=%d statJittered=%d magicJittered=%d actors=%d lights=%d enchantments=%d zones=%d protectedSlots=%d",
-    CONFIG.seed, candidateLists, slotChanges, containerChanges, effectChanges, statChanges, magicChanges, actorChanges,
-    lightChanges, enchantmentChanges, zoneChanges, ctx.skipped))
+local recipeChanges = 0
+if CONFIG.shuffleRecipeOutputs or CONFIG.shuffleRecipeIngredients then
+    recipeChanges = shuffles.recipes(ctx)
+end
+
+print(string.format([[
+    EverythingRandomizer:
+    seed=%d
+    lists=%d
+    swappedSlots=%d
+    containers=%d
+
+    ingredients=%d
+    potions=%d
+    enchantments=%d
+    shouts=%d
+
+    statJittered=%d
+    magicJittered=%d
+    actors=%d
+    lights=%d
+    enchantments=%d
+    zones=%d
+    recipes=%d
+    protectedSlots=%d
+]],
+    CONFIG.seed,
+    candidateLists,
+    slotChanges,
+    containerChanges,
+    ingredientChanges,
+    potionChanges,
+    enchantmentChanges,
+    shoutChanges,
+    statChanges,
+    magicChanges,
+    actorChanges,
+    lightChanges,
+    enchantmentChanges,
+    zoneChanges,
+    recipeChanges,
+    ctx.skipped
+)
+)

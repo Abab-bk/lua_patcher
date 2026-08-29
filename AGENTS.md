@@ -20,7 +20,6 @@ invoke format           # clang-format on src/
 - `invoke deploy` **wipes the entire `$SKYRIM_MODS_FOLDER/LuaPatcher` folder first**, then builds via the `deploy` workflow preset.
 - Packaging needs `7z`: `invoke package`, `invoke package-example`, `invoke package-tools`. Version resolves from CMakeLists.txt or git tag.
 - `invoke release` builds and packages all four release zips (LuaPatcher, EverythingRandomizer, GearInjection, protectgen) at one version into `dist/` — local only, never touches GitHub.
-- Releases are CI-driven: pushing a `v*` tag runs `.github/workflows/release.yml` (ubuntu-latest, clang-cl + xwin + dotnet, same toolchain as local), which calls `invoke release --version <tag>` and uploads the four zips as a draft release (`gh release create --draft`).
 - `invoke gen-protection` regenerates `examples/EverythingRandomizer/EverythingRandomizer_protection.lua` from Skyrim plugin files via `dotnet run --project third_party/protectgen`. Only commit the vanilla+CC default (no `--plugins`); modded load orders must not be committed.
 
 ## Testing

@@ -32,7 +32,7 @@ Usage:
                                              (LuaPatcher, EverythingRandomizer, GearInjection,
                                              protectgen) at one version into dist/. Never touches
                                              GitHub; the release CI calls this and uploads itself.
-    invoke release --version X.Y.Z           override version (default: git tag or CMakeLists.txt)
+    invoke release --version X.Y.Z           override version (default: CMakeLists.txt VERSION)
     invoke release --build-dir DIR           reuse an existing build dir instead of building
 
     invoke build-protectgen                  build protectgen for the current platform (single file)
@@ -119,7 +119,7 @@ def _list_distributable_examples() -> list[Path]:
 
 
 def _resolve_version(version: str = "") -> str:
-    """Resolve version from explicit string, git tag, or CMakeLists.txt."""
+    """Resolve version from an explicit string, or CMakeLists.txt VERSION."""
     ver = version.strip() if version else ""
     if ver:
         if not re.match(r"^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$", ver):
@@ -282,7 +282,7 @@ def package(c: Context, build_dir: str = "", version: str = ""):
     """Build (optional) and create a distributable zip for NexusMods/mod managers.
 
     --build-dir DIR  skip cmake build; search DIR for the DLL instead of build/release-linux
-    --version X.Y.Z  optional, e.g. 1.0.0 (default: exact git tag or CMakeLists.txt version)
+    --version X.Y.Z  optional, e.g. 1.0.0 (default: CMakeLists.txt VERSION)
     """
     _ensure_root()
 
@@ -373,7 +373,7 @@ def package_example(
     (every .lua in the example folder ships: script, config, modules, datasets)
 
     --example NAME  example folder/name to package (default: EverythingRandomizer)
-    --version X.Y.Z override version (default: git tag or CMakeLists.txt)
+    --version X.Y.Z override version (default: CMakeLists.txt VERSION)
     --out DIR       output dir or file (default: dist/<Name>-<ver>.zip)
 
     Examples:
@@ -556,7 +556,7 @@ def package_tools(c: Context, version: str = "", out: str = ""):
     third_party/README.md release manifest). Shipped alongside the
     EverythingRandomizer standalone mod.
 
-    --version X.Y.Z  override version (default: git tag or CMakeLists.txt)
+    --version X.Y.Z  override version (default: CMakeLists.txt VERSION)
     --out DIR        output dir or file (default: dist/protectgen-<ver>.zip)
     """
     _ensure_root()
@@ -631,10 +631,11 @@ def release(c: Context, version: str = "", build_dir: str = ""):
     """One-shot local packaging: the four release zips into dist/.
 
     Produces LuaPatcher, EverythingRandomizer, GearInjection and protectgen
-    zips, all at the same version. Never touches GitHub — the release CI
-    workflow calls this same task and uploads the zips itself.
+    zips from the current source tree, all at the same version. The version
+    comes from CMakeLists.txt VERSION (--version overrides it). Never touches
+    GitHub.
 
-    --version X.Y.Z  override version (default: git tag or CMakeLists.txt)
+    --version X.Y.Z  override version (default: CMakeLists.txt VERSION)
     --build-dir DIR  reuse an existing build dir instead of building
     """
     _ensure_root()

@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # lib/ is submodules (commonlibsse-ng, vendored vcpkg)
+          submodules: recursive
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm ninja-build p7zip-full
+
+      - name: Install xwin
+        run: |
+          XWIN_URL=$(curl -s https://api.github.com/repos/Jake-Shadle/xwin/releases/latest \
+            | python3 -c "import json,sys; print(next(a['browser_download_url'] for a in json.load(sys.stdin)['assets'] if 'x86_64-unknown-linux-musl' in a['name']))")
+          curl -L -o xwin.tar.gz "$XWIN_URL"
+          tar -xzf xwin.tar.gz --strip-components=1
+          sudo mv xwin /usr/local/bin/xwin
+          xwin --version
+
+      - name: Cache xwin SDK
+        uses: actions/cache@v4
+        id: xwin-cache
+        with:
+          path: ~/.xwin
+          key: xwin-splat
+
+      - name: xwin splat
+        if: steps.xwin-cache.outputs.cache-hit != 'true'
+        run: xwin splat --output ~/.xwin
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x # protectgen targets net10.0
+
+      - name: Install invoke
+        run: python3 -m pip install invoke
+
+      # Builds the plugin (release-linux preset, same toolchain as local dev)
+      # and packages all four zips: LuaPatcher, EverythingRandomizer,
+      # GearInjection, protectgen — all at the tag version.
+      - name: Package
+        run: invoke release --version "${GITHUB_REF_NAME#v}"
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" --draft --generate-notes \
+            "dist/LuaPatcher-${VER}.zip" \
+            "dist/EverythingRandomizer-${VER}.zip" \
+            "dist/GearInjection-${VER}.zip" \
+            "dist/protectgen-${VER}.zip"

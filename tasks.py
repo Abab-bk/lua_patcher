@@ -28,6 +28,13 @@ Usage:
     invoke package-tools                     package protectgen (third_party) as companion zip
     invoke package-tools --version X.Y.Z     override version
 
+    invoke release                           one-shot local packaging: the four release zips
+                                             (LuaPatcher, EverythingRandomizer, GearInjection,
+                                             protectgen) at one version into dist/. Never touches
+                                             GitHub; the release CI calls this and uploads itself.
+    invoke release --version X.Y.Z           override version (default: git tag or CMakeLists.txt)
+    invoke release --build-dir DIR           reuse an existing build dir instead of building
+
     invoke build-protectgen                  build protectgen for the current platform (single file)
 
     invoke gen-protection                    regenerate EverythingRandomizer_protection.lua from the
@@ -617,6 +624,42 @@ def package_tools(c: Context, version: str = "", out: str = ""):
         shutil.rmtree(tmp, ignore_errors=True)
 
     print(f"\nPackageTools: {zip_name}  (version={ver})")
+
+
+@task
+def release(c: Context, version: str = "", build_dir: str = ""):
+    """One-shot local packaging: the four release zips into dist/.
+
+    Produces LuaPatcher, EverythingRandomizer, GearInjection and protectgen
+    zips, all at the same version. Never touches GitHub — the release CI
+    workflow calls this same task and uploads the zips itself.
+
+    --version X.Y.Z  override version (default: git tag or CMakeLists.txt)
+    --build-dir DIR  reuse an existing build dir instead of building
+    """
+    _ensure_root()
+
+    ver = _resolve_version(version)
+    print(f"Release version: {ver}")
+
+    package(c, build_dir=build_dir, version=ver)
+    package_example(c, example="EverythingRandomizer", version=ver)
+    package_example(c, example="GearInjection", version=ver)
+    package_tools(c, version=ver)
+
+    zips = [
+        ROOT / "dist" / f"LuaPatcher-{ver}.zip",
+        ROOT / "dist" / f"EverythingRandomizer-{ver}.zip",
+        ROOT / "dist" / f"GearInjection-{ver}.zip",
+        ROOT / "dist" / f"protectgen-{ver}.zip",
+    ]
+    missing = [str(z) for z in zips if not z.is_file()]
+    if missing:
+        raise Exit(f"release: expected zips missing: {', '.join(missing)}")
+
+    print("\nRelease artifacts:")
+    for z in zips:
+        print(f"  {z}")
 
 
 @task(aliases=["listExamples"])

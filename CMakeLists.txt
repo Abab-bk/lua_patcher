@@ -98,7 +98,8 @@ else()
         src/Crafting.cpp
         src/Protection.cpp
         "${CMAKE_CURRENT_BINARY_DIR}/src/version.rc"
-        USE_ADDRESS_LIBRARY)
+        USE_ADDRESS_LIBRARY
+        src/Outfit.cpp)
 
     source_group("Resources" FILES "${CMAKE_CURRENT_BINARY_DIR}/src/version.rc")
 

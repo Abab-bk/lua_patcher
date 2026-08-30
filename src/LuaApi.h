@@ -66,6 +66,9 @@ namespace LuaPatcher
 	struct LuaConstructibleObject : LuaForm
 	{};
 
+	struct LuaOutfit : LuaForm
+	{};
+
 	// Fallback __index handler: raises a Lua error for unknown properties
 	// instead of silently returning nil (matches the pre-sol2 behavior).
 	template <class T>
@@ -120,42 +123,18 @@ namespace LuaPatcher
 	// Registers the `lua_patcher` global table, the `print` override and the Form usertype.
 	void RegisterApi(sol::state_view& a_lua);
 
-	// Registers the LeveledList usertype and the leveled list API functions.
 	void RegisterLeveledList(sol::state_view& a_lua);
-
-	// Registers the Weapon/Armor usertypes and the equipment API functions.
 	void RegisterEquipment(sol::state_view& a_lua);
-
-	// Registers Spell/MagicEffect usertypes and magic API functions.
 	void RegisterMagic(sol::state_view& a_lua);
-
-	// Registers the FormList usertype and the form list API functions.
 	void RegisterFormList(sol::state_view& a_lua);
-
-	// Registers the Ingredient/Potion usertypes and the alchemy API functions.
 	void RegisterAlchemy(sol::state_view& a_lua);
-
-	// Registers the Enchantment usertype and the enchantment API functions.
 	void RegisterEnchantment(sol::state_view& a_lua);
-
-	// Registers the Container usertype and the container API functions.
 	void RegisterContainer(sol::state_view& a_lua);
-
-	// Registers the Actor (TESNPC) usertype and the actor API functions.
 	void RegisterActors(sol::state_view& a_lua);
-
-	// Registers the Global usertype and the global API functions.
 	void RegisterWorld(sol::state_view& a_lua);
-
-	// Registers the Shout usertype and the shout API functions.
 	void RegisterShout(sol::state_view& a_lua);
-
-	// Registers the Light usertype and the light API functions.
 	void RegisterLight(sol::state_view& a_lua);
-
-	// Registers the EncounterZone usertype and the encounter zone API functions.
 	void RegisterEncounterZone(sol::state_view& a_lua);
-
-	// Registers the ConstructibleObject usertype and the crafting API functions.
 	void RegisterCrafting(sol::state_view& a_lua);
+	void RegisterOutfits(sol::state_view& a_lua);
 }

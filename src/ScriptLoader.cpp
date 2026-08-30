@@ -149,6 +149,7 @@ namespace LuaPatcher
 		RegisterLight(lua);
 		RegisterEncounterZone(lua);
 		RegisterCrafting(lua);
+		RegisterOutfits(lua);
 		BuildQuestProtection();
 		RegisterProtection(lua);
 
